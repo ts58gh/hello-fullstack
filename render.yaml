@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: hello-fullstack-backend
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    autoDeploy: true
+    envVars:
+      # For a public demo, allow any origin. For production, set this to your
+      # GitHub Pages origin (e.g. https://<user>.github.io or
+      # https://<user>.github.io/<repo>).
+      - key: CORS_ALLOW_ORIGINS
+        value: "*"

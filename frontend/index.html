@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hello Fullstack</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0b1020;
+        --fg: #e8eaf2;
+        --muted: #aab0c0;
+        --card: rgba(255, 255, 255, 0.06);
+        --border: rgba(255, 255, 255, 0.12);
+        --accent: #7c5cff;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f6f7fb;
+          --fg: #0f172a;
+          --muted: #475569;
+          --card: rgba(15, 23, 42, 0.04);
+          --border: rgba(15, 23, 42, 0.12);
+          --accent: #5b43ff;
+        }
+      }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        background: radial-gradient(1200px 600px at 10% 0%, rgba(124, 92, 255, 0.25), transparent),
+          radial-gradient(900px 500px at 100% 30%, rgba(56, 189, 248, 0.18), transparent),
+          var(--bg);
+        color: var(--fg);
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .card {
+        width: min(720px, 100%);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 22px 22px 18px;
+        backdrop-filter: blur(10px);
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 22px;
+        letter-spacing: -0.02em;
+      }
+      p {
+        margin: 0 0 16px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 14px;
+      }
+      button {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(124, 92, 255, 0.18), rgba(124, 92, 255, 0.06));
+        color: var(--fg);
+        border-radius: 12px;
+        padding: 10px 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: rgba(124, 92, 255, 0.6);
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      input[type="text"] {
+        flex: 1;
+        min-width: 180px;
+        appearance: none;
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.12);
+        color: var(--fg);
+        border-radius: 12px;
+        padding: 10px 12px;
+        font-size: 15px;
+      }
+      input[type="text"]:focus {
+        outline: none;
+        border-color: rgba(124, 92, 255, 0.55);
+        box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.15);
+      }
+      .field {
+        margin-bottom: 14px;
+      }
+      .pill {
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 6px 10px;
+      }
+      pre {
+        margin: 0;
+        padding: 14px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.18);
+        overflow: auto;
+      }
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Hello Fullstack</h1>
+      <p>
+        Type your name — the page calls the API as you type (debounced). Or use
+        the button for a one-off request.
+      </p>
+
+      <div class="field">
+        <label for="apiBase">API base URL</label>
+        <div class="row" style="margin-bottom: 0">
+          <input
+            id="apiBase"
+            type="text"
+            placeholder="e.g. https://your-service.onrender.com"
+            inputmode="url"
+            autocomplete="url"
+          />
+          <span class="pill" id="apiBasePill"></span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="name">Your name</label>
+        <div class="row" style="margin-bottom: 0">
+          <input
+            id="name"
+            type="text"
+            placeholder="e.g. Ada"
+            autocomplete="name"
+            maxlength="80"
+          />
+          <button id="call" type="button">Greet</button>
+        </div>
+      </div>
+
+      <pre id="out">Ready — start typing or click Greet.</pre>
+
+      <p style="margin-top: 14px; font-size: 12px">
+        Backend must allow CORS from your GitHub Pages origin. On Render, set
+        <code>CORS_ALLOW_ORIGINS</code> to something like
+        <code>https://&lt;user&gt;.github.io</code> or
+        <code>https://&lt;user&gt;.github.io/&lt;repo&gt;</code>.
+      </p>
+    </div>
+
+    <script>
+      const out = document.getElementById("out");
+      const apiBaseInput = document.getElementById("apiBase");
+      const nameInput = document.getElementById("name");
+      const callBtn = document.getElementById("call");
+      const pill = document.getElementById("apiBasePill");
+
+      function normalizeBaseUrl(x) {
+        const raw = String(x || "").trim().replace(/\/+$/, "");
+        return raw;
+      }
+
+      function getApiBaseFromUrl() {
+        const v = new URLSearchParams(window.location.search).get("api");
+        return v ? normalizeBaseUrl(v) : "";
+      }
+
+      function getApiBaseFromStorage() {
+        try {
+          return normalizeBaseUrl(localStorage.getItem("hello_fullstack_api_base"));
+        } catch {
+          return "";
+        }
+      }
+
+      let apiBase =
+        getApiBaseFromUrl() ||
+        getApiBaseFromStorage() ||
+        "http://localhost:8000";
+
+      function renderApiBase() {
+        apiBaseInput.value = apiBase;
+        pill.textContent = `API_BASE: ${apiBase}`;
+      }
+
+      function setApiBase(next) {
+        const v = normalizeBaseUrl(next);
+        if (!v) return;
+        apiBase = v;
+        try {
+          localStorage.setItem("hello_fullstack_api_base", apiBase);
+        } catch {
+          // ignore
+        }
+        renderApiBase();
+      }
+
+      renderApiBase();
+
+      function pretty(x) {
+        return JSON.stringify(x, null, 2);
+      }
+
+      let debounceTimer = null;
+
+      async function fetchHello() {
+        const q = nameInput.value.trim();
+        const url =
+          q.length === 0
+            ? `${apiBase}/api/hello`
+            : `${apiBase}/api/hello?name=${encodeURIComponent(q)}`;
+
+        out.textContent = "Loading…";
+        callBtn.disabled = true;
+        try {
+          const res = await fetch(url, {
+            method: "GET",
+            headers: { Accept: "application/json" },
+          });
+          const body = await res.json().catch(() => null);
+          if (!res.ok) {
+            throw new Error(
+              `HTTP ${res.status}\n` + (body ? pretty(body) : "(no JSON body)")
+            );
+          }
+          out.textContent = pretty(body);
+        } catch (e) {
+          out.textContent =
+            "Request failed.\n\n" +
+            (e && e.stack ? e.stack : String(e)) +
+            "\n\nIf deployed: check CORS and the Render URL.";
+        } finally {
+          callBtn.disabled = false;
+        }
+      }
+
+      nameInput.addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          fetchHello();
+        }, 350);
+      });
+
+      callBtn.addEventListener("click", () => {
+        clearTimeout(debounceTimer);
+        fetchHello();
+      });
+
+      apiBaseInput.addEventListener("change", () => {
+        setApiBase(apiBaseInput.value);
+      });
+    </script>
+  </body>
+</html>
