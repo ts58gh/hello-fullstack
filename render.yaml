@@ -1,10 +1,10 @@
 services:
   - type: web
-    name: hello-fullstack-backend
+    name: hello-fullstack-py
     env: python
     rootDir: backend
-    buildCommand: python3 -m pip install -r requirements.txt
-    startCommand: python3 -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     autoDeploy: true
     envVars:
       # For a public demo, allow any origin. For production, set this to your
