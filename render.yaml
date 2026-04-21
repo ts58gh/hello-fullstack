@@ -7,8 +7,7 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     autoDeploy: true
     envVars:
-      # For a public demo, allow any origin. For production, set this to your
-      # GitHub Pages origin (e.g. https://<user>.github.io or
-      # https://<user>.github.io/<repo>).
+      # Restrict CORS to the GitHub Pages origin that hosts the frontend.
+      # Use a comma-separated list to allow multiple origins if needed.
       - key: CORS_ALLOW_ORIGINS
-        value: "*"
+        value: "https://ts58gh.github.io"
