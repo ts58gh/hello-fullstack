@@ -13,6 +13,7 @@
         --card: rgba(255, 255, 255, 0.06);
         --border: rgba(255, 255, 255, 0.12);
         --accent: #7c5cff;
+        --chip: rgba(255, 255, 255, 0.06);
       }
       @media (prefers-color-scheme: light) {
         :root {
@@ -22,8 +23,10 @@
           --card: rgba(15, 23, 42, 0.04);
           --border: rgba(15, 23, 42, 0.12);
           --accent: #5b43ff;
+          --chip: rgba(15, 23, 42, 0.05);
         }
       }
+      * { box-sizing: border-box; }
       body {
         margin: 0;
         font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
@@ -38,12 +41,14 @@
         padding: 24px;
       }
       .card {
-        width: min(720px, 100%);
+        width: min(780px, 100%);
         background: var(--card);
         border: 1px solid var(--border);
-        border-radius: 16px;
+        border-radius: 18px;
         padding: 22px 22px 18px;
         backdrop-filter: blur(10px);
+        position: relative;
+        overflow: hidden;
       }
       h1 {
         margin: 0 0 6px;
@@ -60,25 +65,21 @@
         gap: 10px;
         flex-wrap: wrap;
         align-items: center;
-        margin-bottom: 14px;
       }
       button {
         appearance: none;
         border: 1px solid var(--border);
-        background: linear-gradient(180deg, rgba(124, 92, 255, 0.18), rgba(124, 92, 255, 0.06));
+        background: linear-gradient(180deg, rgba(124, 92, 255, 0.22), rgba(124, 92, 255, 0.08));
         color: var(--fg);
         border-radius: 12px;
         padding: 10px 14px;
         font-weight: 600;
         cursor: pointer;
+        transition: transform 80ms ease, border-color 120ms ease;
       }
-      button:hover {
-        border-color: rgba(124, 92, 255, 0.6);
-      }
-      button:disabled {
-        opacity: 0.55;
-        cursor: not-allowed;
-      }
+      button:hover { border-color: rgba(124, 92, 255, 0.6); }
+      button:active { transform: translateY(1px); }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
       label {
         display: block;
         font-size: 12px;
@@ -100,11 +101,9 @@
       input[type="text"]:focus {
         outline: none;
         border-color: rgba(124, 92, 255, 0.55);
-        box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.15);
+        box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.18);
       }
-      .field {
-        margin-bottom: 14px;
-      }
+      .field { margin-bottom: 14px; }
       .pill {
         font-size: 12px;
         color: var(--muted);
@@ -112,30 +111,140 @@
         border-radius: 999px;
         padding: 6px 10px;
       }
-      pre {
-        margin: 0;
-        padding: 14px;
+      a { color: var(--accent); }
+
+      /* --- Fancy card --- */
+      .namecard {
+        margin-top: 14px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 0;
+        overflow: hidden;
+        background: var(--card);
+      }
+      .namecard .aura {
+        height: 6px;
+        width: 100%;
+        background: linear-gradient(90deg, var(--c1, #7c5cff), var(--c2, #38bdf8));
+      }
+      .namecard .body {
+        display: grid;
+        grid-template-columns: 112px 1fr;
+        gap: 18px;
+        padding: 18px;
+      }
+      .avatar {
+        width: 112px;
+        height: 112px;
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+      }
+      .avatar svg { display: block; width: 100%; height: 100%; }
+      .who { min-width: 0; }
+      .hello {
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+        margin: 0 0 4px;
+        min-height: 1.3em;
+        transition: opacity 220ms ease, transform 220ms ease;
+      }
+      .hello.fade { opacity: 0; transform: translateY(-4px); }
+      .meta {
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .badge {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--fg);
+        background: linear-gradient(90deg, var(--c1, #7c5cff), var(--c2, #38bdf8));
+        padding: 3px 8px;
+        border-radius: 999px;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 4px;
+      }
+      .chip {
+        font-size: 12px;
+        background: var(--chip);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 4px 8px;
+        color: var(--fg);
+      }
+      .chip b { color: var(--muted); font-weight: 600; margin-right: 4px; }
+      .fortune {
+        margin: 12px 18px 18px;
+        padding: 12px 14px;
+        border: 1px dashed var(--border);
         border-radius: 12px;
+        font-style: italic;
+        color: var(--fg);
+        background: rgba(255,255,255,0.03);
+      }
+      .fortune::before { content: "\201C"; font-size: 22px; color: var(--muted); margin-right: 4px; }
+      .fortune::after  { content: "\201D"; font-size: 22px; color: var(--muted); margin-left: 4px; }
+
+      .details {
+        margin-top: 10px;
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+      }
+      details summary {
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 12px;
+        user-select: none;
+      }
+      pre {
+        margin: 10px 0 0;
+        padding: 12px;
+        border-radius: 10px;
         border: 1px solid var(--border);
         background: rgba(0, 0, 0, 0.18);
         overflow: auto;
+        font-size: 12px;
+        max-height: 260px;
       }
-      a {
-        color: var(--accent);
+
+      .confetti {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      @media (max-width: 520px) {
+        .namecard .body { grid-template-columns: 88px 1fr; }
+        .avatar { width: 88px; height: 88px; border-radius: 16px; }
+        .hello { font-size: 22px; }
       }
     </style>
   </head>
   <body>
     <div class="card">
+      <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
+
       <h1>Hello Fullstack</h1>
       <p>
-        Type your name — the page calls the API as you type (debounced). Or use
-        the button for a one-off request.
+        Type your name — the page calls the API as you type (debounced) to
+        build a personalized name card.
       </p>
 
       <div class="field">
         <label for="apiBase">API base URL</label>
-        <div class="row" style="margin-bottom: 0">
+        <div class="row">
           <input
             id="apiBase"
             type="text"
@@ -149,11 +258,11 @@
 
       <div class="field">
         <label for="name">Your name</label>
-        <div class="row" style="margin-bottom: 0">
+        <div class="row">
           <input
             id="name"
             type="text"
-            placeholder="e.g. Ada"
+            placeholder="e.g. Ada Lovelace"
             autocomplete="name"
             maxlength="80"
           />
@@ -161,33 +270,54 @@
         </div>
       </div>
 
-      <pre id="out">Ready — start typing or click Greet.</pre>
-
-      <p style="margin-top: 14px; font-size: 12px">
-        Backend must allow CORS from your GitHub Pages origin. On Render, set
-        <code>CORS_ALLOW_ORIGINS</code> to something like
-        <code>https://&lt;user&gt;.github.io</code> or
-        <code>https://&lt;user&gt;.github.io/&lt;repo&gt;</code>.
-      </p>
+      <section class="namecard" id="namecard" aria-live="polite">
+        <div class="aura" id="aura"></div>
+        <div class="body">
+          <div class="avatar" id="avatar"></div>
+          <div class="who">
+            <div class="hello" id="hello">Start typing a name…</div>
+            <div class="meta">
+              <span class="badge" id="auraWord">—</span>
+              <span id="langLabel">—</span>
+              <span id="status" style="margin-left:auto"></span>
+            </div>
+            <div class="chips" id="chips"></div>
+          </div>
+        </div>
+        <div class="fortune" id="fortune">Your fortune will appear here.</div>
+        <div class="details" style="padding: 0 18px 14px">
+          <details>
+            <summary>Raw JSON</summary>
+            <pre id="raw">{}</pre>
+          </details>
+        </div>
+      </section>
     </div>
 
     <script>
-      const out = document.getElementById("out");
       const apiBaseInput = document.getElementById("apiBase");
       const nameInput = document.getElementById("name");
       const callBtn = document.getElementById("call");
       const pill = document.getElementById("apiBasePill");
 
-      function normalizeBaseUrl(x) {
-        const raw = String(x || "").trim().replace(/\/+$/, "");
-        return raw;
-      }
+      const avatarEl = document.getElementById("avatar");
+      const helloEl = document.getElementById("hello");
+      const langLabelEl = document.getElementById("langLabel");
+      const auraWordEl = document.getElementById("auraWord");
+      const auraBarEl = document.getElementById("aura");
+      const chipsEl = document.getElementById("chips");
+      const fortuneEl = document.getElementById("fortune");
+      const rawEl = document.getElementById("raw");
+      const statusEl = document.getElementById("status");
+      const confettiCanvas = document.getElementById("confetti");
 
+      function normalizeBaseUrl(x) {
+        return String(x || "").trim().replace(/\/+$/, "");
+      }
       function getApiBaseFromUrl() {
         const v = new URLSearchParams(window.location.search).get("api");
         return v ? normalizeBaseUrl(v) : "";
       }
-
       function getApiBaseFromStorage() {
         try {
           return normalizeBaseUrl(localStorage.getItem("hello_fullstack_api_base"));
@@ -195,7 +325,6 @@
           return "";
         }
       }
-
       let apiBase =
         getApiBaseFromUrl() ||
         getApiBaseFromStorage() ||
@@ -205,35 +334,151 @@
         apiBaseInput.value = apiBase;
         pill.textContent = `API_BASE: ${apiBase}`;
       }
-
       function setApiBase(next) {
         const v = normalizeBaseUrl(next);
         if (!v) return;
         apiBase = v;
-        try {
-          localStorage.setItem("hello_fullstack_api_base", apiBase);
-        } catch {
-          // ignore
-        }
+        try { localStorage.setItem("hello_fullstack_api_base", apiBase); } catch {}
         renderApiBase();
       }
-
       renderApiBase();
 
-      function pretty(x) {
-        return JSON.stringify(x, null, 2);
+      // --- greetings rotation ---
+      let greetingIdx = 0;
+      let greetings = [];
+      let rotateTimer = null;
+      function stopRotation() {
+        if (rotateTimer) { clearInterval(rotateTimer); rotateTimer = null; }
+      }
+      function showGreeting(i) {
+        if (!greetings.length) return;
+        const g = greetings[i % greetings.length];
+        helloEl.classList.add("fade");
+        setTimeout(() => {
+          helloEl.textContent = g.text;
+          langLabelEl.textContent = g.lang;
+          helloEl.classList.remove("fade");
+        }, 180);
+      }
+      function startRotation() {
+        stopRotation();
+        if (greetings.length <= 1) return;
+        rotateTimer = setInterval(() => {
+          greetingIdx = (greetingIdx + 1) % greetings.length;
+          showGreeting(greetingIdx);
+        }, 2500);
       }
 
-      let debounceTimer = null;
+      // --- confetti ---
+      function resizeConfetti() {
+        const rect = confettiCanvas.getBoundingClientRect();
+        confettiCanvas.width = rect.width * devicePixelRatio;
+        confettiCanvas.height = rect.height * devicePixelRatio;
+      }
+      window.addEventListener("resize", resizeConfetti);
+      requestAnimationFrame(resizeConfetti);
 
-      async function fetchHello() {
+      function burstConfetti(colors) {
+        const ctx = confettiCanvas.getContext("2d");
+        const w = confettiCanvas.width, h = confettiCanvas.height;
+        const N = 80;
+        const parts = Array.from({ length: N }, () => ({
+          x: w * 0.5,
+          y: h * 0.18,
+          vx: (Math.random() - 0.5) * 8 * devicePixelRatio,
+          vy: (Math.random() * -6 - 2) * devicePixelRatio,
+          g: 0.18 * devicePixelRatio,
+          size: (3 + Math.random() * 3) * devicePixelRatio,
+          rot: Math.random() * Math.PI,
+          vr: (Math.random() - 0.5) * 0.3,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          life: 80 + Math.random() * 40,
+        }));
+        let t = 0;
+        function frame() {
+          ctx.clearRect(0, 0, w, h);
+          let alive = 0;
+          for (const p of parts) {
+            if (p.life <= 0) continue;
+            alive++;
+            p.vy += p.g;
+            p.x += p.vx;
+            p.y += p.vy;
+            p.rot += p.vr;
+            p.life -= 1;
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 60));
+            ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.5);
+            ctx.restore();
+          }
+          t++;
+          if (alive > 0 && t < 180) requestAnimationFrame(frame);
+          else ctx.clearRect(0, 0, w, h);
+        }
+        requestAnimationFrame(frame);
+      }
+
+      // --- render ---
+      function renderCard(data) {
+        rawEl.textContent = JSON.stringify(data, null, 2);
+
+        const [c1, c2] = data.aura?.colors || ["#7c5cff", "#38bdf8"];
+        auraBarEl.style.background = `linear-gradient(90deg, ${c1}, ${c2})`;
+        document.documentElement.style.setProperty("--c1", c1);
+        document.documentElement.style.setProperty("--c2", c2);
+        auraWordEl.textContent = data.aura?.word || "—";
+        auraWordEl.style.background = `linear-gradient(90deg, ${c1}, ${c2})`;
+
+        avatarEl.innerHTML = data.avatar_svg || "";
+
+        greetings = Array.isArray(data.greetings) ? data.greetings : [];
+        greetingIdx = 0;
+        if (greetings.length) showGreeting(0);
+        startRotation();
+
+        const s = data.stats || {};
+        const chips = [
+          ["length", s.length],
+          ["letters", s.letters],
+          ["vowels", s.vowels],
+          ["consonants", s.consonants],
+          ["reversed", s.reversed],
+          ["leet", s.leet],
+        ];
+        chipsEl.innerHTML = "";
+        for (const [label, value] of chips) {
+          if (value === undefined || value === null || value === "") continue;
+          const span = document.createElement("span");
+          span.className = "chip";
+          const b = document.createElement("b");
+          b.textContent = label + ":";
+          span.appendChild(b);
+          span.appendChild(document.createTextNode(" " + String(value)));
+          chipsEl.appendChild(span);
+        }
+
+        fortuneEl.textContent = data.fortune || "";
+
+        burstConfetti([c1, c2, "#ffffff"]);
+      }
+
+      function pretty(x) { return JSON.stringify(x, null, 2); }
+
+      let debounceTimer = null;
+      let reqSeq = 0;
+
+      async function fetchGreet() {
         const q = nameInput.value.trim();
         const url =
           q.length === 0
-            ? `${apiBase}/api/hello`
-            : `${apiBase}/api/hello?name=${encodeURIComponent(q)}`;
+            ? `${apiBase}/api/greet`
+            : `${apiBase}/api/greet?name=${encodeURIComponent(q)}`;
 
-        out.textContent = "Loading…";
+        const mySeq = ++reqSeq;
+        statusEl.textContent = "loading…";
         callBtn.disabled = true;
         try {
           const res = await fetch(url, {
@@ -241,15 +486,18 @@
             headers: { Accept: "application/json" },
           });
           const body = await res.json().catch(() => null);
+          if (mySeq !== reqSeq) return; // stale response
           if (!res.ok) {
-            throw new Error(
-              `HTTP ${res.status}\n` + (body ? pretty(body) : "(no JSON body)")
-            );
+            throw new Error(`HTTP ${res.status}\n` + (body ? pretty(body) : "(no JSON body)"));
           }
-          out.textContent = pretty(body);
+          statusEl.textContent = "";
+          renderCard(body);
         } catch (e) {
-          out.textContent =
-            "Request failed.\n\n" +
+          if (mySeq !== reqSeq) return;
+          statusEl.textContent = "error";
+          helloEl.textContent = "Request failed";
+          langLabelEl.textContent = "";
+          rawEl.textContent = "Request failed.\n\n" +
             (e && e.stack ? e.stack : String(e)) +
             "\n\nIf deployed: check CORS and the Render URL.";
         } finally {
@@ -259,19 +507,22 @@
 
       nameInput.addEventListener("input", () => {
         clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          fetchHello();
-        }, 350);
+        debounceTimer = setTimeout(fetchGreet, 350);
       });
-
+      nameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          clearTimeout(debounceTimer);
+          fetchGreet();
+        }
+      });
       callBtn.addEventListener("click", () => {
         clearTimeout(debounceTimer);
-        fetchHello();
+        fetchGreet();
       });
+      apiBaseInput.addEventListener("change", () => setApiBase(apiBaseInput.value));
 
-      apiBaseInput.addEventListener("change", () => {
-        setApiBase(apiBaseInput.value);
-      });
+      // Kick off with an initial greeting for "friend"
+      fetchGreet();
     </script>
   </body>
 </html>

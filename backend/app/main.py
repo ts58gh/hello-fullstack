@@ -3,6 +3,8 @@ import os
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.greet import build_greeting
+
 
 def _allowed_origins() -> list[str]:
     raw = os.getenv("CORS_ALLOW_ORIGINS", "")
@@ -29,8 +31,13 @@ if origins:
 def root() -> dict[str, str | list[str]]:
     return {
         "service": "hello-fullstack backend",
-        "endpoints": ["/health", "/api/hello", "/api/hello?name=Ada"],
-        "hint": "Open /health or /api/hello — try ?name= on /api/hello. Interactive API docs: /docs",
+        "endpoints": [
+            "/health",
+            "/api/hello",
+            "/api/hello?name=Ada",
+            "/api/greet?name=Ada",
+        ],
+        "hint": "Try /api/greet?name=Ada for the fancy payload. Interactive API docs: /docs",
     }
 
 
@@ -50,4 +57,15 @@ def hello(
     if name is None or not name.strip():
         return {"message": "Hello from FastAPI"}
     return {"message": f"Hello, {name.strip()}!"}
+
+
+@app.get("/api/greet")
+def greet(
+    name: str | None = Query(
+        None,
+        max_length=80,
+        description="Optional name for a personalized name card.",
+    ),
+) -> dict:
+    return build_greeting(name)
 
