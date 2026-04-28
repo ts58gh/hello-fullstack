@@ -35,6 +35,7 @@ const newTableBtn = document.getElementById("newTableBtn");
 const newTableBtn2 = document.getElementById("newTableBtn2");
 const nextDealBtn = document.getElementById("nextDealBtn");
 const statusLine = document.getElementById("statusLine");
+const welcomeStatusEl = document.getElementById("welcomeStatus");
 const auctionCellsEl = document.getElementById("auctionCells");
 const bidPanelEl = document.getElementById("bidPanel");
 const tricksLineEl = document.getElementById("tricksLine");
@@ -111,8 +112,15 @@ async function apiGet(path) {
 
 // --- main flow ---
 async function startNewTable() {
-  status("Creating table…");
+  if (session.busy) return;
   session.busy = true;
+  startBtn.disabled = true;
+  setWelcomeStatus("Creating table… (the backend may cold-start, this can take 30–60s on the free tier)");
+  status("Creating table…");
+  // Slow-start nudge: if the call hasn't finished after a few seconds, reassure the user.
+  const slowTimer = setTimeout(() => {
+    setWelcomeStatus("Still waking up the backend on Render free tier… hold tight.");
+  }, 6000);
   try {
     const data = await apiPost("/api/bridge/tables", {});
     session.tableId = data.table_id;
@@ -121,12 +129,20 @@ async function startNewTable() {
     persistSession();
     welcomeEl.classList.add("hidden");
     gameEl.classList.remove("hidden");
+    setWelcomeStatus("");
     render();
   } catch (e) {
+    setWelcomeStatus(`Failed: ${e.message}. Check the API base (${API_BASE}) is reachable.`);
     status(`Failed: ${e.message}`);
   } finally {
+    clearTimeout(slowTimer);
     session.busy = false;
+    startBtn.disabled = false;
   }
+}
+
+function setWelcomeStatus(msg) {
+  if (welcomeStatusEl) welcomeStatusEl.textContent = msg || "";
 }
 
 async function refreshState() {
