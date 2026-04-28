@@ -4,6 +4,7 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.greet import build_greeting
+from app.bridge.api import router as bridge_router
 
 
 def _allowed_origins() -> list[str]:
@@ -27,6 +28,9 @@ if origins:
     )
 
 
+app.include_router(bridge_router)
+
+
 @app.get("/")
 def root() -> dict[str, str | list[str]]:
     return {
@@ -36,8 +40,12 @@ def root() -> dict[str, str | list[str]]:
             "/api/hello",
             "/api/hello?name=Ada",
             "/api/greet?name=Ada",
+            "/api/bridge/tables (POST)",
+            "/api/bridge/tables/{id}",
+            "/api/bridge/tables/{id}/actions (POST)",
+            "/api/bridge/tables/{id}/next_deal (POST)",
         ],
-        "hint": "Try /api/greet?name=Ada for the fancy payload. Interactive API docs: /docs",
+        "hint": "Interactive API docs: /docs",
     }
 
 

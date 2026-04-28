@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bridge vs Bots</title>
+    <link rel="stylesheet" href="./bridge.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <a href="../">Hello Fullstack</a>
+        <span class="sep">/</span>
+        <span>Bridge vs Bots</span>
+      </div>
+      <div class="topright">
+        <span class="pill" id="apiBasePill">API_BASE: ?</span>
+        <button id="newTableBtn" class="btn ghost" type="button">New table</button>
+      </div>
+    </header>
+
+    <main id="app">
+      <section id="welcome" class="welcome">
+        <h1>Bridge vs Bots</h1>
+        <p>
+          You play <b>South</b>. Bots play North, East and West. The auction
+          phase comes first; then 13 tricks; then scoring. The same engine
+          will plug into multi-player WebSockets later — single-player today,
+          real-time later, no rules rewrite.
+        </p>
+        <button id="startBtn" class="btn primary" type="button">Deal a hand</button>
+        <details class="rules">
+          <summary>Quick rules cheat-sheet</summary>
+          <ul>
+            <li><b>Bidding</b>: each call must outrank the last. Strain order: ♣ &lt; ♦ &lt; ♥ &lt; ♠ &lt; NT.</li>
+            <li><b>Auction ends</b> after 3 passes following any bid (or 4 passes from the start).</li>
+            <li><b>Contract</b>: highest bid wins. Declarer is the first on that side to bid the contract's strain.</li>
+            <li><b>Play</b>: opening lead from declarer's left. Dummy (declarer's partner) is revealed; declarer plays both hands.</li>
+            <li>Must follow suit if you can. Highest trump wins, else highest of led suit.</li>
+            <li>Make your contract or pay penalties. Game bonus when trick score ≥ 100.</li>
+          </ul>
+        </details>
+      </section>
+
+      <section id="game" class="game hidden">
+        <div class="board">
+          <div class="seat n" id="seat-N">
+            <div class="seat-label">North</div>
+            <div class="hand-row" id="hand-N"></div>
+          </div>
+          <div class="seat w" id="seat-W">
+            <div class="seat-label">West</div>
+            <div class="hand-col" id="hand-W"></div>
+          </div>
+          <div class="center">
+            <div class="trick-area" id="trickArea"></div>
+            <div class="status" id="statusLine">—</div>
+          </div>
+          <div class="seat e" id="seat-E">
+            <div class="seat-label">East</div>
+            <div class="hand-col" id="hand-E"></div>
+          </div>
+          <div class="seat s" id="seat-S">
+            <div class="seat-label">South (you)</div>
+            <div class="hand-row" id="hand-S"></div>
+          </div>
+        </div>
+
+        <aside class="side">
+          <div class="panel">
+            <div class="panel-title">Auction</div>
+            <div class="auction-grid">
+              <div class="auction-head">N</div>
+              <div class="auction-head">E</div>
+              <div class="auction-head">S</div>
+              <div class="auction-head">W</div>
+              <div id="auctionCells" class="auction-cells"></div>
+            </div>
+            <div id="bidPanel" class="bid-panel hidden"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">Tricks</div>
+            <div class="tricks-line" id="tricksLine">—</div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">Score</div>
+            <div class="score-row"><span>NS</span><b id="scoreNS">0</b></div>
+            <div class="score-row"><span>EW</span><b id="scoreEW">0</b></div>
+            <div class="muted small" id="dealNumber">Deal —</div>
+          </div>
+        </aside>
+      </section>
+
+      <div id="endcard" class="endcard hidden">
+        <div class="endcard-inner">
+          <div class="end-title" id="endTitle">Deal complete</div>
+          <pre class="end-detail" id="endDetail"></pre>
+          <div class="row">
+            <button id="nextDealBtn" class="btn primary" type="button">Next deal</button>
+            <button id="newTableBtn2" class="btn ghost" type="button">New table</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script src="./bridge.js"></script>
+  </body>
+</html>
