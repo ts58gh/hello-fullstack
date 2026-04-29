@@ -39,11 +39,36 @@ def visible_seats(deal: Deal, viewer: Seat) -> set[Seat]:
     return out
 
 
+def _seats_payload(table: Table) -> list[dict]:
+    """Public seat info: who sits where, what kind, connected, special role."""
+    out: list[dict] = []
+    for s in SEAT_ORDER:
+        owner = table.seat_owners.get(s)
+        info: dict = {
+            "seat": s.value,
+            "kind": table.seat_kind(s),
+            "display_name": owner.display_name if owner else None,
+            "connected": owner.connected if owner else None,
+            "is_declarer": False,
+            "is_dummy": False,
+        }
+        if table.deal is not None and table.deal.play is not None:
+            play = table.deal.play
+            info["is_declarer"] = (play.contract.declarer == s)
+            info["is_dummy"] = (play.dummy_revealed and play.dummy == s)
+        out.append(info)
+    return out
+
+
 def view_for(table: Table, viewer: Seat) -> dict:
     deal = table.deal
     payload: dict = {
         "table_id": table.id,
         "viewer": viewer.value,
+        "mode": table.mode,
+        "can_play": table.can_play(),
+        "all_seats_claimed": table.all_seats_claimed(),
+        "seats": _seats_payload(table),
         "deal_number": table.deal_number,
         "cumulative_score": dict(table.cumulative_score),
         "history": list(table.history),
@@ -110,5 +135,9 @@ def view_for(table: Table, viewer: Seat) -> dict:
             all_hands_payload[s.value] = {"cards": _hand_payload(deal.hands[s]), "count": len(deal.hands[s])}
         payload["hands_revealed"] = all_hands_payload
 
-    payload["your_turn"] = (deal.acting_controller() == viewer) if deal.phase != Phase.COMPLETE else False
+    payload["your_turn"] = (
+        table.can_play()
+        and deal.phase != Phase.COMPLETE
+        and deal.acting_controller() == viewer
+    )
     return payload

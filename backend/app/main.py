@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.greet import build_greeting
 from app.bridge.api import router as bridge_router
+from app.bridge.ws import router as bridge_ws_router
 
 
 def _allowed_origins() -> list[str]:
@@ -29,6 +30,7 @@ if origins:
 
 
 app.include_router(bridge_router)
+app.include_router(bridge_ws_router)
 
 
 @app.get("/")
@@ -38,12 +40,16 @@ def root() -> dict[str, str | list[str]]:
         "endpoints": [
             "/health",
             "/api/hello",
-            "/api/hello?name=Ada",
             "/api/greet?name=Ada",
-            "/api/bridge/tables (POST)",
+            "/api/bridge/lobby",
+            "/api/bridge/lobby (POST)",
+            "/api/bridge/tables (POST: solo shortcut)",
             "/api/bridge/tables/{id}",
+            "/api/bridge/tables/{id}/claim_seat (POST)",
+            "/api/bridge/tables/{id}/release_seat (POST)",
             "/api/bridge/tables/{id}/actions (POST)",
             "/api/bridge/tables/{id}/next_deal (POST)",
+            "/api/bridge/tables/{id}/ws (WS)",
         ],
         "hint": "Interactive API docs: /docs",
     }

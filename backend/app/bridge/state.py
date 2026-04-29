@@ -1,10 +1,19 @@
-"""Top-level deal/table state combining auction + play + scoring."""
+"""Top-level deal/table state combining auction + play + scoring.
+
+The ``Table`` here holds *all* the multi-player concerns: which seats are
+claimed by humans (with a ``client_id`` + ``display_name``), which are
+bot-filled, the table's mode (``with_bots`` vs ``humans_only``), running
+score, and the current deal. The IO layer (HTTP / WS / lobby) lives one
+level up in ``tables.py`` / ``ws.py`` / ``lobby.py``; this module knows
+nothing about transports.
+"""
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal
+from typing import Literal, Optional
 
 from .auction import Auction, Contract, Strain, calls_to_dicts, derive_contract
 from .cards import Card, deal_hands
@@ -17,6 +26,10 @@ class Phase(str, Enum):
     AUCTION = "auction"
     PLAY = "play"
     COMPLETE = "complete"
+
+
+TableMode = Literal["with_bots", "humans_only"]
+SeatKind = Literal["human", "bot", "empty"]
 
 
 @dataclass
@@ -108,19 +121,87 @@ class Deal:
 
 
 @dataclass
+class SeatOwner:
+    """Identity of a human sitting at a seat."""
+
+    client_id: str
+    display_name: str
+    last_seen: float = field(default_factory=time.time)
+    connected: bool = True
+
+    def to_dict(self) -> dict:
+        return {
+            "client_id": self.client_id,
+            "display_name": self.display_name,
+            "last_seen": self.last_seen,
+            "connected": self.connected,
+        }
+
+
+@dataclass
 class Table:
-    """A persistent table that runs deals one after another.
+    """A persistent bridge table.
 
     Single deal at a time; deals 1..N in sequence. Score accumulates per side.
+    Multi-player concerns live here:
+
+    - ``mode`` controls empty-seat policy (bot-fill vs strict 4 humans).
+    - ``seat_owners`` records who (anonymously) claims each seat. ``None``
+      means unclaimed, which is bot-controlled in ``with_bots`` and a
+      blocker in ``humans_only``.
+    - ``seat_tokens`` is the per-seat write capability. Possessing the
+      token authorizes actions for that seat over HTTP and WS.
     """
 
     id: str
-    seat_tokens: dict[Seat, str | None] = field(default_factory=lambda: {s: None for s in SEAT_ORDER})
-    seat_kinds: dict[Seat, Literal["human", "bot"]] = field(default_factory=dict)
+    mode: TableMode = "with_bots"
+    public: bool = True
+    host_client_id: str = ""
+    created_at: float = field(default_factory=time.time)
+
+    seat_tokens: dict[Seat, Optional[str]] = field(
+        default_factory=lambda: {s: None for s in SEAT_ORDER}
+    )
+    seat_owners: dict[Seat, Optional[SeatOwner]] = field(
+        default_factory=lambda: {s: None for s in SEAT_ORDER}
+    )
+
     deal: Deal | None = None
     deal_number: int = 0
     cumulative_score: dict[str, int] = field(default_factory=lambda: {"NS": 0, "EW": 0})
     history: list[dict] = field(default_factory=list)
+
+    # ----- seat-kind derivation ------------------------------------------
+
+    def seat_kind(self, seat: Seat) -> SeatKind:
+        if self.seat_owners.get(seat) is not None:
+            return "human"
+        if self.mode == "with_bots":
+            return "bot"
+        return "empty"
+
+    def all_seat_kinds(self) -> dict[Seat, SeatKind]:
+        return {s: self.seat_kind(s) for s in SEAT_ORDER}
+
+    def humans_count(self) -> int:
+        return sum(1 for s in SEAT_ORDER if self.seat_owners.get(s) is not None)
+
+    def all_seats_claimed(self) -> bool:
+        return all(self.seat_owners.get(s) is not None for s in SEAT_ORDER)
+
+    def can_play(self) -> bool:
+        """Whether the deal can run forward right now.
+
+        ``with_bots``: always true once a deal exists.
+        ``humans_only``: only when *all* seats are claimed by humans.
+        """
+        if self.deal is None:
+            return False
+        if self.mode == "with_bots":
+            return True
+        return self.all_seats_claimed()
+
+    # ----- deal lifecycle ------------------------------------------------
 
     def start_new_deal(self, dealer: Seat | None = None, seed: int | None = None) -> Deal:
         # rotate dealer if not specified: dealer rotates clockwise per deal
@@ -155,3 +236,28 @@ class Table:
             "declarer_tricks": r.declarer_tricks,
             "score": r.score,
         })
+
+    # ----- public summary (for lobby listings) ---------------------------
+
+    def lobby_summary(self) -> dict:
+        seats: list[dict] = []
+        for s in SEAT_ORDER:
+            owner = self.seat_owners.get(s)
+            seats.append({
+                "seat": s.value,
+                "kind": self.seat_kind(s),
+                "display_name": owner.display_name if owner else None,
+                "connected": owner.connected if owner else None,
+            })
+        deal_phase = self.deal.phase.value if self.deal else "no_deal"
+        return {
+            "table_id": self.id,
+            "mode": self.mode,
+            "public": self.public,
+            "created_at": self.created_at,
+            "deal_phase": deal_phase,
+            "deal_number": self.deal_number,
+            "humans": self.humans_count(),
+            "seats": seats,
+            "cumulative_score": dict(self.cumulative_score),
+        }

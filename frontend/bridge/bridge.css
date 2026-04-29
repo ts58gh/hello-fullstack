@@ -96,6 +96,151 @@ body {
 .rules { margin-top: 16px; color: var(--muted); }
 .rules ul { line-height: 1.6; }
 
+/* Lobby */
+.lobby {
+  max-width: 820px;
+  margin: 24px auto;
+  padding: 0 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.lobby-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+}
+.lobby-card h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -0.02em; }
+.lobby-card h2 { margin: 0 0 12px; font-size: 16px; letter-spacing: -0.01em; }
+.lobby-card p { color: var(--muted); line-height: 1.55; margin: 0 0 14px; }
+
+.namebox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 4px 3px 10px;
+}
+.namebox input {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  padding: 4px 8px;
+  font-size: 13px;
+  border-radius: 999px;
+  outline: none;
+  width: 130px;
+}
+.namebox input:focus { background: rgba(255,255,255,0.08); }
+
+.create-form {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.create-form .field { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.create-form label { font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.06em; margin: 0; }
+.radio { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; color: var(--fg); }
+
+.lobby-list { display: flex; flex-direction: column; gap: 10px; }
+.lobby-row {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--panel-strong);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+.lobby-row .meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.lobby-row .top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.lobby-row .badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.lobby-row .seats { display: flex; gap: 6px; flex-wrap: wrap; }
+.lobby-row .seat-chip {
+  font-size: 11px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.seat-chip.empty { color: var(--muted); }
+.seat-chip.bot { color: var(--accent); }
+.seat-chip.human { color: var(--good); }
+.seat-chip.disconnected { opacity: 0.55; text-decoration: line-through; }
+.lobby-row .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* Seat-claim overlay (reuses .endcard look) */
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0,0,0,0.55);
+  z-index: 12;
+}
+.overlay-inner {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  width: min(420px, 92vw);
+}
+.seat-choices {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.seat-choices .btn { justify-content: center; text-align: center; }
+.seat-choices .btn[disabled] { opacity: 0.4; }
+
+/* Connection pill */
+#connPill { display: inline-flex; align-items: center; gap: 6px; }
+#connPill::before {
+  content: "";
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--bad);
+  display: inline-block;
+}
+#connPill.online::before { background: var(--good); }
+#connPill.connecting::before { background: gold; }
+
+/* New seat label format */
+.seat-label .dir { font-weight: 700; opacity: 1; }
+.seat-label .who { opacity: 0.85; margin-left: 4px; }
+.seat-label .badge {
+  font-size: 9px;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.3);
+  letter-spacing: 0.05em;
+}
+.seat-label .badge.bot { color: rgba(255,255,255,0.85); border-color: rgba(124,92,255,0.55); background: rgba(124,92,255,0.18); }
+.seat-label .badge.you { color: gold; border-color: rgba(255,215,0,0.55); }
+.seat-label .badge.disconnected { color: var(--bad); }
+.seat-label .badge.empty { color: rgba(255,255,255,0.6); }
+
 .game {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;

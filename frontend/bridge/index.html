@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bridge vs Bots</title>
+    <title>Bridge — Hello Fullstack</title>
     <link rel="stylesheet" href="./bridge.css" />
   </head>
   <body>
@@ -11,28 +11,68 @@
       <div class="brand">
         <a href="../">Hello Fullstack</a>
         <span class="sep">/</span>
-        <span>Bridge vs Bots</span>
+        <span>Bridge</span>
       </div>
       <div class="topright">
+        <label class="namebox">
+          <span>You</span>
+          <input id="displayNameInput" type="text" maxlength="24" placeholder="Display name" />
+        </label>
         <span class="pill" id="apiBasePill">API_BASE: ?</span>
-        <button id="newTableBtn" class="btn ghost" type="button">New table</button>
+        <span class="pill" id="connPill" title="WebSocket status">offline</span>
+        <button id="leaveBtn" class="btn ghost hidden" type="button">Leave table</button>
       </div>
     </header>
 
     <main id="app">
-      <section id="welcome" class="welcome">
-        <h1>Bridge vs Bots</h1>
-        <p>
-          You play <b>South</b>. Bots play North, East and West. The auction
-          phase comes first; then 13 tricks; then scoring. The same engine
-          will plug into multi-player WebSockets later — single-player today,
-          real-time later, no rules rewrite.
-        </p>
-        <div class="row" style="align-items:center;gap:12px">
-          <button id="startBtn" class="btn primary" type="button">Deal a hand</button>
-          <span class="muted small" id="welcomeStatus"></span>
+      <!-- ============== LOBBY VIEW ============== -->
+      <section id="lobby" class="lobby">
+        <div class="lobby-card">
+          <h1>Pick a table</h1>
+          <p>
+            Bridge is best with friends. Create a table and share the link, or
+            jump straight into a single-player game vs bots. Bot pacing is
+            intentional so the action is easy to follow.
+          </p>
+          <div class="row" style="gap:8px;align-items:center">
+            <button id="quickPlayBtn" class="btn primary" type="button">Quick play vs bots</button>
+            <button id="toggleCreateBtn" class="btn" type="button">Create custom table…</button>
+            <span class="muted small" id="lobbyStatus"></span>
+          </div>
+
+          <div id="createForm" class="create-form hidden">
+            <div class="field">
+              <label>Mode</label>
+              <div class="row" style="gap:14px">
+                <label class="radio"><input type="radio" name="mode" value="with_bots" checked /> Play with bots while we wait</label>
+                <label class="radio"><input type="radio" name="mode" value="humans_only" /> Strict 4 humans</label>
+              </div>
+            </div>
+            <div class="field">
+              <label>Sit at</label>
+              <div class="row" style="gap:6px">
+                <label class="radio"><input type="radio" name="hostSeat" value="N" /> N</label>
+                <label class="radio"><input type="radio" name="hostSeat" value="E" /> E</label>
+                <label class="radio"><input type="radio" name="hostSeat" value="S" checked /> S</label>
+                <label class="radio"><input type="radio" name="hostSeat" value="W" /> W</label>
+                <label class="radio"><input type="radio" name="hostSeat" value="" /> none (just create)</label>
+              </div>
+            </div>
+            <div class="row">
+              <button id="createConfirmBtn" class="btn primary" type="button">Create table</button>
+            </div>
+          </div>
         </div>
-        <details class="rules">
+
+        <div class="lobby-card">
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <h2 style="margin:0">Open tables</h2>
+            <button id="refreshLobbyBtn" class="btn tiny ghost" type="button">Refresh</button>
+          </div>
+          <div id="lobbyList" class="lobby-list"><div class="muted small">Loading…</div></div>
+        </div>
+
+        <details class="rules lobby-card">
           <summary>Quick rules cheat-sheet</summary>
           <ul>
             <li><b>Bidding</b>: each call must outrank the last. Strain order: ♣ &lt; ♦ &lt; ♥ &lt; ♠ &lt; NT.</li>
@@ -45,14 +85,15 @@
         </details>
       </section>
 
+      <!-- ============== GAME VIEW ============== -->
       <section id="game" class="game hidden">
         <div class="board">
           <div class="seat n" id="seat-N">
-            <div class="seat-label">North</div>
+            <div class="seat-label" id="label-N"><span class="dir">N</span> <span class="who">North</span></div>
             <div class="hand-row" id="hand-N"></div>
           </div>
           <div class="seat w" id="seat-W">
-            <div class="seat-label">West</div>
+            <div class="seat-label" id="label-W"><span class="dir">W</span> <span class="who">West</span></div>
             <div class="hand-col" id="hand-W"></div>
           </div>
           <div class="center">
@@ -60,16 +101,23 @@
             <div class="status" id="statusLine">—</div>
           </div>
           <div class="seat e" id="seat-E">
-            <div class="seat-label">East</div>
+            <div class="seat-label" id="label-E"><span class="dir">E</span> <span class="who">East</span></div>
             <div class="hand-col" id="hand-E"></div>
           </div>
           <div class="seat s" id="seat-S">
-            <div class="seat-label">South (you)</div>
+            <div class="seat-label" id="label-S"><span class="dir">S</span> <span class="who">South</span></div>
             <div class="hand-row" id="hand-S"></div>
           </div>
         </div>
 
         <aside class="side">
+          <div class="panel">
+            <div class="panel-title">Table</div>
+            <div class="muted small" id="tableInfoLine">—</div>
+            <div class="row" style="gap:6px;margin-top:8px">
+              <button id="copyLinkBtn" class="btn tiny ghost" type="button">Copy invite link</button>
+            </div>
+          </div>
           <div class="panel">
             <div class="panel-title">Auction</div>
             <div class="auction-grid">
@@ -96,18 +144,32 @@
         </aside>
       </section>
 
+      <!-- ============== SEAT-CLAIM OVERLAY ============== -->
+      <div id="seatOverlay" class="overlay hidden">
+        <div class="overlay-inner">
+          <div class="end-title">Pick a seat</div>
+          <div class="muted small" id="seatOverlayInfo">—</div>
+          <div id="seatChoices" class="seat-choices"></div>
+          <div class="row" style="margin-top:14px">
+            <button id="leaveOverlayBtn" class="btn ghost" type="button">Back to lobby</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============== END-OF-DEAL ============== -->
       <div id="endcard" class="endcard hidden">
         <div class="endcard-inner">
           <div class="end-title" id="endTitle">Deal complete</div>
           <pre class="end-detail" id="endDetail"></pre>
           <div class="row">
             <button id="nextDealBtn" class="btn primary" type="button">Next deal</button>
-            <button id="newTableBtn2" class="btn ghost" type="button">New table</button>
+            <button id="leaveTableBtn" class="btn ghost" type="button">Leave table</button>
           </div>
         </div>
       </div>
     </main>
 
+    <script src="./ws.js"></script>
     <script src="./bridge.js"></script>
   </body>
 </html>
