@@ -118,5 +118,5 @@ flowchart TB
 | `WS /api/sheng/tables/{id}/ws`，`action` / `next_hand` / `ping` | done |
 | `RunningHand` 首墩由庄家下家领出 | done |
 | 6 人 `friend_calls`（API + WS + `next_hand` 覆盖）；双友均揭牌且三席时终局 3v3 计分，否则对角 | done |
-| `frontend/sheng/` 试玩页（热座切视角 + WS + 下一副） | done |
+| `frontend/sheng/` 试玩页（热座 + 其他座首张自动代出 + WS） | done |
 | Phase 4：部署与联调 | 未开始 |

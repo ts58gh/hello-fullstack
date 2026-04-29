@@ -33,7 +33,7 @@
     <main>
       <p class="hint-line" style="margin: 0 0 12px; font-size: 13px; color: var(--muted, #8a9e8f)">
         <strong style="color: var(--fg, inherit)">在线试玩：</strong>
-        GitHub Pages 打开本页时，会自动连接公共演示后端 Render（见上方 API）。若你连不上，可把 API 改成你自己的后端地址；自建部署时须在 Render 上设置
+        GitHub Pages 打开本页时，会自动连接公共演示后端 Render（见上方 API）。勾选「其他座位自动出牌」后可单手试玩。若你连不上，可把 API 改成你自己的后端地址；自建部署时须在 Render 上设置
         <code>CORS_ALLOW_ORIGINS=https://你的用户名.github.io</code>
         （与仓库 Pages 所用域名一致）。
       </p>
@@ -44,6 +44,10 @@
           >种子 <input id="seedIn" type="number" placeholder="随机" style="width: 9em"
         /></label>
         <button type="button" class="btn ghost" id="btnLeave">离开本桌</button>
+        <label class="row" style="gap: 6px; align-items: center">
+          <input type="checkbox" id="chkAutoBot" checked />
+          <span style="font-size: 13px">其他座位代出首张合法牌（单手试玩）</span>
+        </label>
       </section>
 
       <div class="seat-strip hidden" id="seatStrip">

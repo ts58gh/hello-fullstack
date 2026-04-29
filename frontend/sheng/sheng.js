@@ -1,6 +1,7 @@
 (function () {
   const STORAGE_SESSION = 'hello_fullstack_sheng_session_v1';
   const STORAGE_API = 'hello_fullstack_api_base';
+  const STORAGE_AUTOBOT = 'hello_fullstack_sheng_autobot_other';
 
   function normalizeBaseUrl(x) {
     return String(x || '')
@@ -93,9 +94,20 @@
   const summaryBox = $('summaryBox');
   const btnNext = $('btnNext');
   const eventLog = $('eventLog');
+  const chkAutoBot = $('chkAutoBot');
 
+  let botBusy = false;
   apiPill.textContent = `API: ${API_BASE}`;
   apiBaseInput.value = API_BASE;
+  try {
+    const vb = sessionStorage.getItem(STORAGE_AUTOBOT);
+    if (chkAutoBot && vb === '0') chkAutoBot.checked = false;
+  } catch {}
+  chkAutoBot?.addEventListener('change', () => {
+    try {
+      sessionStorage.setItem(STORAGE_AUTOBOT, chkAutoBot.checked ? '1' : '0');
+    } catch {}
+  });
   apiBaseInput.addEventListener('change', () => {
     const v = normalizeBaseUrl(apiBaseInput.value);
     if (v) {
@@ -165,6 +177,38 @@
   function tokenForSeat(s) {
     if (!app.tokens) return '';
     return app.tokens[String(s)] || '';
+  }
+
+  /** When it is another seat's turn, play their first legal card via REST so one human can solo the table. */
+  async function autoplayOthersIfNeeded() {
+    if (!chkAutoBot || !chkAutoBot.checked || botBusy || !app.tableId) return;
+    const st = app.lastState;
+    if (!st || st.phase !== 'play') return;
+    const actor = st.to_act_seat;
+    if (actor === undefined || actor === null) return;
+    if (actor === st.viewer_seat) return;
+
+    botBusy = true;
+    try {
+      const tt = encodeURIComponent(tokenForSeat(actor));
+      const r = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}?token=${tt}`);
+      if (!r.ok) return;
+      const peer = await r.json();
+      const legal = peer.legal_plays || [];
+      if (!legal.length) return;
+      const cid = legal[0].cid;
+      const r2 = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ token: tokenForSeat(actor), card_id: cid }),
+      });
+      const body = await r2.json().catch(() => null);
+      if (r2.ok && body && body.state) renderState(body.state);
+    } catch (_) {
+      /* ignore */
+    } finally {
+      botBusy = false;
+    }
   }
 
   function buildSeatStrip() {
@@ -317,6 +361,7 @@
           (myTurn ? ' — 请点一张可出（金边）' : ' — 等待他人')
         : '本副已结束，可点「下一副」';
     eventLog.textContent = JSON.stringify(st, null, 2);
+    setTimeout(() => void autoplayOthersIfNeeded(), 0);
   }
 
   function escapeHtml(s) {
