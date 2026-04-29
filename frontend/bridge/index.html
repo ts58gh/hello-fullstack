@@ -44,8 +44,17 @@
             <div class="field">
               <label>Mode</label>
               <div class="row" style="gap:14px">
-                <label class="radio"><input type="radio" name="mode" value="with_bots" checked /> Play with bots while we wait</label>
-                <label class="radio"><input type="radio" name="mode" value="humans_only" /> Strict 4 humans</label>
+                <label class="radio"><input type="radio" name="mode" value="with_bots" checked /> Mix humans and bots</label>
+                <label class="radio"><input type="radio" name="mode" value="humans_only" /> Strict 4 humans (no bots ever)</label>
+              </div>
+            </div>
+            <div class="field" id="minHumansField">
+              <label>Wait for how many humans before dealing?</label>
+              <div class="row" style="gap:6px">
+                <label class="radio"><input type="radio" name="minHumans" value="1" checked /> 1 (solo, vs 3 bots)</label>
+                <label class="radio"><input type="radio" name="minHumans" value="2" /> 2 (vs 2 bots)</label>
+                <label class="radio"><input type="radio" name="minHumans" value="3" /> 3 (vs 1 bot)</label>
+                <label class="radio"><input type="radio" name="minHumans" value="4" /> 4 (no bots unless someone leaves)</label>
               </div>
             </div>
             <div class="field">

@@ -155,6 +155,7 @@ class Table:
 
     id: str
     mode: TableMode = "with_bots"
+    min_humans: int = 1  # how many human seats must be filled before dealing
     public: bool = True
     host_client_id: str = ""
     created_at: float = field(default_factory=time.time)
@@ -192,14 +193,14 @@ class Table:
     def can_play(self) -> bool:
         """Whether the deal can run forward right now.
 
-        ``with_bots``: always true once a deal exists.
-        ``humans_only``: only when *all* seats are claimed by humans.
+        Gate is solely ``humans_count() >= min_humans``. ``mode`` only
+        controls what happens to seats that nobody owns: in ``with_bots``
+        they are bot-controlled; in ``humans_only`` they stay empty
+        (which stalls play on that seat until someone claims it).
         """
         if self.deal is None:
             return False
-        if self.mode == "with_bots":
-            return True
-        return self.all_seats_claimed()
+        return self.humans_count() >= self.min_humans
 
     # ----- deal lifecycle ------------------------------------------------
 
@@ -253,11 +254,13 @@ class Table:
         return {
             "table_id": self.id,
             "mode": self.mode,
+            "min_humans": self.min_humans,
             "public": self.public,
             "created_at": self.created_at,
             "deal_phase": deal_phase,
             "deal_number": self.deal_number,
             "humans": self.humans_count(),
+            "can_play": self.can_play(),
             "seats": seats,
             "cumulative_score": dict(self.cumulative_score),
         }

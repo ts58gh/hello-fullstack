@@ -40,6 +40,12 @@ class HostInfo(BaseModel):
 
 class CreateLobbyRequest(BaseModel):
     mode: str = Field(default="with_bots", description="with_bots | humans_only")
+    min_humans: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=4,
+        description="Number of humans required before dealing (1..4). Forced to 4 when mode=humans_only.",
+    )
     host: HostInfo = Field(default_factory=HostInfo)
     host_seat: Optional[str] = Field(default=None, description="N/E/S/W or null")
     seed: Optional[int] = None
@@ -128,6 +134,7 @@ async def post_lobby(body: CreateLobbyRequest) -> CreateLobbyResponse:
             host_client_id=body.host.client_id,
             host_display_name=body.host.display_name,
             host_seat=seat,
+            min_humans=body.min_humans,
             public=body.public,
             seed=body.seed,
         )

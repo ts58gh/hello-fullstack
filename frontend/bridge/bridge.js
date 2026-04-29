@@ -68,6 +68,7 @@
   const refreshLobbyBtnEl = $("refreshLobbyBtn");
   const createFormEl = $("createForm");
   const createConfirmBtnEl = $("createConfirmBtn");
+  const minHumansFieldEl = $("minHumansField");
   const tableInfoLineEl = $("tableInfoLine");
   const copyLinkBtnEl = $("copyLinkBtn");
   const nextDealBtnEl = $("nextDealBtn");
@@ -284,11 +285,17 @@
     id.textContent = `#${t.table_id}`;
     const modeBadge = document.createElement("span");
     modeBadge.className = "badge";
-    modeBadge.textContent = t.mode === "humans_only" ? "humans only" : "with bots";
+    if (t.mode === "humans_only") modeBadge.textContent = "humans only";
+    else if ((t.min_humans || 1) === 1) modeBadge.textContent = "with bots";
+    else modeBadge.textContent = `wait for ${t.min_humans} · bots fill rest`;
     const phaseBadge = document.createElement("span");
     phaseBadge.className = "badge";
     phaseBadge.textContent = `${t.deal_phase} · deal ${t.deal_number || 0}`;
-    top.appendChild(id); top.appendChild(modeBadge); top.appendChild(phaseBadge);
+    const humansBadge = document.createElement("span");
+    humansBadge.className = "badge";
+    humansBadge.textContent = `humans ${t.humans || 0}/${t.min_humans || 1}`;
+    if (!t.can_play) humansBadge.style.color = "var(--bad)";
+    top.appendChild(id); top.appendChild(modeBadge); top.appendChild(phaseBadge); top.appendChild(humansBadge);
     meta.appendChild(top);
 
     const seats = document.createElement("div");
@@ -371,8 +378,11 @@
     if (app.busy) return;
     const mode = (document.querySelector('input[name="mode"]:checked') || {}).value || "with_bots";
     const seatVal = (document.querySelector('input[name="hostSeat"]:checked') || {}).value || "";
+    const minHumansRaw = (document.querySelector('input[name="minHumans"]:checked') || {}).value;
+    const minHumans = mode === "humans_only" ? 4 : parseInt(minHumansRaw || "1", 10);
     const body = {
       mode,
+      min_humans: minHumans,
       host: { client_id: app.clientId, display_name: app.displayName || "Host" },
       host_seat: seatVal || null,
     };
@@ -738,9 +748,13 @@
     scoreEWEl.textContent = String(cs.EW);
     dealNumberEl.textContent = st.deal_number ? `Deal #${st.deal_number}` : "Deal —";
     if (tableInfoLineEl) {
-      const modeText = st.mode === "humans_only" ? "Strict 4 humans" : "With bots";
-      const claimedText = st.all_seats_claimed ? "all seats taken" : `${(st.seats || []).filter((s) => s.kind === "human").length}/4 humans`;
-      tableInfoLineEl.textContent = `Table ${st.table_id} · ${modeText} · ${claimedText}`;
+      let modeText;
+      if (st.mode === "humans_only") modeText = "Strict 4 humans";
+      else if ((st.min_humans || 1) === 1) modeText = "With bots (solo)";
+      else modeText = `Wait for ${st.min_humans}, bots fill rest`;
+      const humansHave = (st.humans_count != null) ? st.humans_count : (st.seats || []).filter((s) => s.kind === "human").length;
+      const gate = st.min_humans || 1;
+      tableInfoLineEl.textContent = `Table ${st.table_id} · ${modeText} · humans ${humansHave}/${gate}`;
     }
     if (st.phase === "play" || st.phase === "complete") {
       if (st.contract) {
@@ -757,7 +771,10 @@
     } else if (st.phase === "auction") {
       tricksLineEl.textContent = "Auction in progress";
     } else if (st.phase === "no_deal") {
-      tricksLineEl.textContent = st.mode === "humans_only" ? "Waiting for 4 humans…" : "Waiting…";
+      const need = (st.min_humans || 1) - (st.humans_count || 0);
+      tricksLineEl.textContent = need > 0
+        ? `Waiting for ${need} more human${need === 1 ? "" : "s"}…`
+        : "Waiting…";
     } else {
       tricksLineEl.textContent = "—";
     }
@@ -776,12 +793,17 @@
   function renderStatus() {
     const st = app.state;
     if (!st) return;
+    const need = (st.min_humans || 1) - (st.humans_count || 0);
     if (st.phase === "no_deal") {
-      setStatus(st.mode === "humans_only" ? "Waiting for all 4 seats to be claimed." : "Waiting…");
+      setStatus(need > 0
+        ? `Waiting for ${need} more human${need === 1 ? "" : "s"} to sit down…`
+        : "Waiting to deal…");
       return;
     }
     if (!st.can_play) {
-      setStatus("Waiting for more humans to sit down…");
+      setStatus(need > 0
+        ? `Paused — need ${need} more human${need === 1 ? "" : "s"} to resume.`
+        : "Paused…");
       return;
     }
     if (st.phase === "auction") {
@@ -832,6 +854,16 @@
   toggleCreateBtnEl.addEventListener("click", () => {
     createFormEl.classList.toggle("hidden");
   });
+  function syncMinHumansVisibility() {
+    const mode = (document.querySelector('input[name="mode"]:checked') || {}).value || "with_bots";
+    if (minHumansFieldEl) {
+      minHumansFieldEl.classList.toggle("hidden", mode === "humans_only");
+    }
+  }
+  document.querySelectorAll('input[name="mode"]').forEach((el) => {
+    el.addEventListener("change", syncMinHumansVisibility);
+  });
+  syncMinHumansVisibility();
   createConfirmBtnEl.addEventListener("click", createCustomTable);
   refreshLobbyBtnEl.addEventListener("click", refreshLobby);
   leaveBtnEl.addEventListener("click", leaveTable);

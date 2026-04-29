@@ -49,16 +49,26 @@ async def create_table(
     host_client_id: Optional[str],
     host_display_name: Optional[str],
     host_seat: Optional[Seat] = None,
+    min_humans: Optional[int] = None,
     public: bool = True,
     seed: Optional[int] = None,
 ) -> tuple[Table, Optional[str]]:
     if mode not in ("with_bots", "humans_only"):
         raise ValueError(f"unknown mode {mode!r}")
+    # humans_only is by definition all-humans-no-bots; force min_humans=4
+    if mode == "humans_only":
+        min_humans = 4
+    if min_humans is None:
+        min_humans = 1
+    min_humans = int(min_humans)
+    if min_humans < 1 or min_humans > 4:
+        raise ValueError("min_humans must be between 1 and 4")
     return await tables.create_table_full(
         mode=mode,
         host_client_id=_sanitize_client_id(host_client_id),
         host_display_name=_sanitize_name(host_display_name),
         host_seat=host_seat,
+        min_humans=min_humans,
         public=public,
         seed=seed,
     )

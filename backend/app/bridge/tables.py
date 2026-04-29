@@ -139,27 +139,31 @@ async def create_table_full(
     host_client_id: str,
     host_display_name: str,
     host_seat: Optional[Seat] = None,
+    min_humans: int = 1,
     public: bool = True,
     seed: Optional[int] = None,
 ) -> tuple[Table, Optional[str]]:
     """Create a new table.
 
-    If ``host_seat`` is given, the host is auto-seated and the returned token
-    is theirs. If not, the table is created with no humans yet (only useful
-    for ``with_bots`` tables, which start playing immediately).
+    If ``host_seat`` is given, the host is auto-seated and the returned
+    token is theirs. The first deal starts as soon as ``humans_count() >=
+    min_humans`` (so ``min_humans=1`` plus a host seat plays solo
+    immediately; ``min_humans=2`` waits for one more human; etc.).
 
-    For ``with_bots`` tables the first deal is started right away. For
-    ``humans_only`` tables the first deal starts only when all 4 seats are
-    claimed (which is enforced inside :func:`claim_seat`).
+    ``mode`` controls what happens to *unclaimed* seats once a deal is in
+    progress: ``with_bots`` lets bots play them; ``humans_only`` leaves
+    them empty (so play stalls until they are claimed).
     """
     _gc_finished_tables()
     if not host_client_id:
         host_client_id = str(uuid.uuid4())
+    min_humans = max(1, min(4, int(min_humans)))
 
     table_id = secrets.token_urlsafe(8)
     table = Table(
         id=table_id,
         mode=mode,
+        min_humans=min_humans,
         public=public,
         host_client_id=host_client_id,
     )
@@ -171,10 +175,8 @@ async def create_table_full(
             host_token = _claim_seat_unlocked(
                 table, host_seat, host_client_id, host_display_name
             )
-        # Start the first deal if appropriate
-        if table.deal is None and (
-            mode == "with_bots" or table.all_seats_claimed()
-        ):
+        # Start the first deal if we already have enough humans seated.
+        if table.deal is None and table.humans_count() >= table.min_humans:
             table.start_new_deal(dealer=Seat.NORTH, seed=seed)
 
     _kick_bot_ticker(table_id)
@@ -269,9 +271,7 @@ async def claim_seat(
             }
         ]
         # Possibly start the first deal now that the table can play
-        if table.deal is None and (
-            table.mode == "with_bots" or table.all_seats_claimed()
-        ):
+        if table.deal is None and table.humans_count() >= table.min_humans:
             table.start_new_deal(dealer=Seat.NORTH)
             events.append({"type": "new_deal", "deal_number": table.deal_number})
 
@@ -401,7 +401,9 @@ async def submit_action(table_id: str, token: str, action: dict[str, Any]) -> di
         if deal is None:
             raise ValueError("no active deal")
         if not table.can_play():
-            raise ValueError("waiting for all seats to be claimed")
+            raise ValueError(
+                f"deal paused: need {table.min_humans} human(s), have {table.humans_count()}"
+            )
 
         events: list[dict] = []
         kind = action.get("kind")
@@ -456,8 +458,10 @@ async def start_next_deal(table_id: str, token: str, seed: int | None = None) ->
         find_seat_for_token(table, token)
         if table.deal is not None and table.deal.phase != Phase.COMPLETE:
             raise ValueError("current deal not finished")
-        if table.mode == "humans_only" and not table.all_seats_claimed():
-            raise ValueError("waiting for all seats to be claimed")
+        if table.humans_count() < table.min_humans:
+            raise ValueError(
+                f"need at least {table.min_humans} human(s); have {table.humans_count()}"
+            )
         table.start_new_deal(seed=seed)
         events = [{"type": "new_deal", "deal_number": table.deal_number}]
     await _broadcast(table_id, events)

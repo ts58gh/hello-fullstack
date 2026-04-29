@@ -66,6 +66,8 @@ def view_for(table: Table, viewer: Seat) -> dict:
         "table_id": table.id,
         "viewer": viewer.value,
         "mode": table.mode,
+        "min_humans": table.min_humans,
+        "humans_count": table.humans_count(),
         "can_play": table.can_play(),
         "all_seats_claimed": table.all_seats_claimed(),
         "seats": _seats_payload(table),
