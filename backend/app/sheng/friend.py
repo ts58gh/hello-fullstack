@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from .cards import JokerFace, PhysCard, RegularFace, Suit
 
@@ -18,6 +19,23 @@ class FriendCall:
     def __post_init__(self) -> None:
         if self.nth < 1:
             raise ValueError("nth must be positive")
+
+
+def parse_friend_calls(rows: list[dict[str, Any]] | None) -> tuple[FriendCall, ...]:
+    """Build engine ``FriendCall`` tuples from JSON-like dicts (``suit`` = ``C|D|H|S``)."""
+
+    if not rows:
+        return ()
+    out: list[FriendCall] = []
+    for row in rows:
+        out.append(
+            FriendCall(
+                nth=int(row["nth"]),
+                suit=Suit(str(row["suit"])),
+                rank=int(row["rank"]),
+            )
+        )
+    return tuple(out)
 
 
 @dataclass

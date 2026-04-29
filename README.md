@@ -20,7 +20,7 @@ Test:
 - `http://localhost:8000/health`
 - `http://localhost:8000/api/hello`
 - `http://localhost:8000/api/hello?name=Ada` (personalized greeting)
-- `http://localhost:8000/docs` (interactive OpenAPI UI)
+- `http://localhost:8000/sheng/` (**升级** 拖拉機试玩静态页 — 与同进程 API 同源，无需配 CORS)
 
 ### Frontend
 
@@ -48,6 +48,12 @@ This repo includes a GitHub Actions workflow that publishes the `frontend/` fold
 2. In GitHub: **Settings → Pages**
    - **Build and deployment**: GitHub Actions
 3. Update `API_BASE` in `frontend/index.html` to your Render URL and push again.
+
+### 升级拖拉机试玩 `/sheng/`
+
+在项目 Pages 就绪后浏览器打开 **`https://<你的 GitHub 用户名>.github.io/<仓库名>/sheng/`**（与仓库同名路径；用户页站点则用 `用户名.github.io` 根路径下的子路径）。
+
+试玩脚本会默认访问公共后端 **`https://hello-fullstack-py.onrender.com`**。若打不开或你从 fork 自部署后端，须在 Render **环境变量** 中设置 **`CORS_ALLOW_ORIGINS`**（允许多个，逗号分隔），包含你的前端源站，通常为 **`https://<用户名>.github.io`**。
 
 ## Windows quick start (using the Projects .venv)
 

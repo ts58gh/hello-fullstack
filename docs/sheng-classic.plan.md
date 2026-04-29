@@ -68,8 +68,8 @@ backend/tests/
 
 | 阶段 | 内容 |
 |---|---|
-| 2 | `/api/sheng/*` REST + WebSocket，复用 `tables`/`lobby`/`ws` 模式 |
-| 3 | `frontend/sheng/` 多选牌 UI + 叫朋友弹窗 |
+| 2 | `/api/sheng/*` REST + WebSocket，`tables`/`ws` 模式 |
+| 3 | `frontend/sheng/` 本地试玩（`/sheng/`） |
 | 4 | 部署与联调 |
 
 ---
@@ -106,3 +106,17 @@ flowchart TB
 - [x] `friend.py` 第 N 张揭牌
 - [x] `state.py` 骨架
 - [x] `pytest` 覆盖核心规则
+
+---
+
+## Phase 2（HTTP + WebSocket，本目录进度）
+
+| 条目 | 状态 |
+|------|------|
+| `app/sheng/tables.py` 房间表、`bank_declarer_seat`、轮转 MVP | done |
+| `POST/GET /api/sheng/tables/*`、`actions`、`next_hand` | done |
+| `WS /api/sheng/tables/{id}/ws`，`action` / `next_hand` / `ping` | done |
+| `RunningHand` 首墩由庄家下家领出 | done |
+| 6 人 `friend_calls`（API + WS + `next_hand` 覆盖）；双友均揭牌且三席时终局 3v3 计分，否则对角 | done |
+| `frontend/sheng/` 试玩页（热座切视角 + WS + 下一副） | done |
+| Phase 4：部署与联调 | 未开始 |

@@ -1,11 +1,16 @@
 import os
 
+from pathlib import Path
+
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.greet import build_greeting
 from app.bridge.api import router as bridge_router
 from app.bridge.ws import router as bridge_ws_router
+from app.sheng.api import router as sheng_router
+from app.sheng.ws import router as sheng_ws_router
 
 
 def _allowed_origins() -> list[str]:
@@ -31,6 +36,16 @@ if origins:
 
 app.include_router(bridge_router)
 app.include_router(bridge_ws_router)
+app.include_router(sheng_router)
+app.include_router(sheng_ws_router)
+
+_SHENG_FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "sheng"
+if (_SHENG_FRONTEND / "index.html").is_file():
+    app.mount(
+        "/sheng",
+        StaticFiles(directory=str(_SHENG_FRONTEND), html=True),
+        name="sheng_frontend",
+    )
 
 
 @app.get("/")
@@ -50,6 +65,11 @@ def root() -> dict[str, str | list[str]]:
             "/api/bridge/tables/{id}/actions (POST)",
             "/api/bridge/tables/{id}/next_deal (POST)",
             "/api/bridge/tables/{id}/ws (WS)",
+            "/api/sheng/tables (POST)",
+            "/api/sheng/tables/{id}",
+            "/api/sheng/tables/{id}/next_hand (POST)",
+            "/api/sheng/tables/{id}/ws (WS)",
+            "/sheng/ (tractor play UI, when frontend/sheng present)",
         ],
         "hint": "Interactive API docs: /docs",
     }

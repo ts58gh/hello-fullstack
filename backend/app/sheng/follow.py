@@ -15,7 +15,6 @@ def _is_plain_in_suit(ctx: TrumpContext, c: PhysCard, suit) -> bool:
     assert isinstance(f, RegularFace)
     if f.suit != suit:
         return False
-    # Even if literal suit matches, a card turned 主 cannot be used as plain follow.
     return not is_trump(ctx, c)
 
 
@@ -28,15 +27,13 @@ def follow_candidates_single(
 
     lf = led.face
 
-    # Leading plain 副花色
     if isinstance(lf, RegularFace) and not is_trump(ctx, led):
         suit = lf.suit
         plain_same = [c for c in hand if _is_plain_in_suit(ctx, c, suit)]
         if plain_same:
             return plain_same
-        return list(hand)  # 垫牌 — any card counts as discard
+        return list(hand)
 
-    # Leading anything considered 主
     mains = [c for c in hand if is_trump(ctx, c)]
     if mains:
         return mains

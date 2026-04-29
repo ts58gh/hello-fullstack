@@ -1,0 +1,249 @@
+:root {
+  color-scheme: dark light;
+  --bg: #0d1810;
+  --fg: #e8eee9;
+  --muted: #8a9e8f;
+  --felt: linear-gradient(160deg, #1a3928 0%, #143220 42%, #0f2818 100%);
+  --card-w: #f4f7f5;
+  --card-bd: rgba(0, 0, 0, 0.18);
+  --accent: #d4af37;
+  --danger: #c44;
+  --border: rgba(255, 255, 255, 0.1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #eef3ee;
+    --fg: #102015;
+    --muted: #4a5750;
+    --felt: linear-gradient(160deg, #c8dcc8 0%, #aec8ae 42%, #9ebb9e 100%);
+    --card-w: #fff;
+    --border: rgba(15, 32, 21, 0.12);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif;
+  background: radial-gradient(
+      900px 500px at 10% -10%,
+      rgba(212, 175, 55, 0.12),
+      transparent
+    ),
+    var(--bg);
+  color: var(--fg);
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+}
+.brand a {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+.brand a:hover {
+  text-decoration: underline;
+}
+.sep {
+  opacity: 0.4;
+  margin: 0 6px;
+}
+.pill {
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  max-width: 42vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conn {
+  flex-shrink: 0;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 12px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: rgba(212, 175, 55, 0.12);
+  color: var(--fg);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) {
+  border-color: rgba(212, 175, 55, 0.45);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn.primary {
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.35), rgba(212, 175, 55, 0.12));
+}
+.btn.ghost {
+  background: transparent;
+}
+.field {
+  margin-bottom: 8px;
+}
+.field label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+input[type='text'],
+input[type='number'],
+select {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--fg);
+  max-width: 100%;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.felt {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--felt);
+  padding: 14px;
+  min-height: 220px;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.25);
+}
+
+.trick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  min-height: 88px;
+  align-items: center;
+}
+.trick-slot {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.trick-slot .card-face {
+  margin: 0 auto 4px;
+}
+
+.hands-title {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 12px 0 6px;
+}
+
+.card-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.card-face {
+  min-width: 52px;
+  height: 72px;
+  border-radius: 8px;
+  background: var(--card-w);
+  color: #111;
+  border: 1px solid var(--card-bd);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: default;
+  user-select: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+.card-face.playable {
+  cursor: pointer;
+  outline: 2px solid var(--accent);
+}
+.card-face.playable:hover {
+  transform: translateY(-2px);
+}
+.card-face.dim {
+  opacity: 0.35;
+}
+
+.statusline {
+  font-size: 13px;
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
+.summary {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px dashed var(--border);
+  background: rgba(0, 0, 0, 0.12);
+  font-size: 13px;
+}
+
+.seat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.seat-strip button {
+  min-width: 36px;
+}
+.seat-strip button.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.25);
+}
+
+.events {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.events pre {
+  margin: 4px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.hidden {
+  display: none !important;
+}
