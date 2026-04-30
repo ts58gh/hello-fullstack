@@ -316,8 +316,8 @@ select {
 
 /* In play: dedicate almost full viewport height to the felt area */
 #tableSection .board-column .sb-board {
-  min-height: max(760px, calc(100vh - 200px));
-  min-height: max(760px, calc(100dvh - 200px));
+  min-height: max(608px, calc(80vh - 160px));
+  min-height: max(608px, calc(80dvh - 160px));
 }
 
 @media (max-width: 1000px) {
@@ -355,9 +355,9 @@ select {
     'w c e'
     '. s .';
   grid-template-columns: minmax(148px, 12vw) minmax(260px, 1fr) minmax(148px, 12vw);
-  grid-template-rows: auto minmax(460px, 1fr) auto;
+  grid-template-rows: auto minmax(368px, 1fr) auto;
   gap: 12px 14px;
-  min-height: min(960px, 94vh);
+  min-height: min(768px, 75vh);
 }
 
 .sb-seat-n {
@@ -407,7 +407,7 @@ select {
   flex-wrap: nowrap;
   justify-content: center;
   align-items: flex-end;
-  min-height: 110px;
+  min-height: 88px;
 }
 .sb-hand-col {
   display: flex;
@@ -415,7 +415,7 @@ select {
   gap: 5px;
   align-items: center;
   justify-content: center;
-  min-height: 260px;
+  min-height: 208px;
 }
 .sb-seat-s .sb-hand-row {
   flex-wrap: wrap;
@@ -466,7 +466,7 @@ select {
   width: 100%;
   max-width: min(940px, 100%);
   min-width: min(520px, 100%);
-  height: clamp(520px, 64vh, 820px);
+  height: clamp(416px, 51vh, 656px);
   max-height: none;
   margin: 0 auto;
   align-self: center;
@@ -550,7 +550,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-height: min(980px, 96vh);
+  min-height: min(784px, 77vh);
   grid-template: none;
   grid-template-columns: unset;
   grid-template-rows: unset;
@@ -568,14 +568,14 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: clamp(440px, 56vh, 720px);
+  min-height: clamp(352px, 45vh, 576px);
 }
 .sb-six-seat {
   flex: 0 1 220px;
   text-align: center;
 }
 .sb-six-seat .sb-hand-row {
-  min-height: 100px;
+  min-height: 80px;
 }
 
 .trick-playmat {
@@ -583,8 +583,8 @@ select {
 }
 
 .trick-playmat--mini {
-  width: 240px;
-  height: 240px;
+  width: 192px;
+  height: 192px;
   margin: 6px auto 0;
 }
 .trick-mat-slot {

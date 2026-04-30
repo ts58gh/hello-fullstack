@@ -527,13 +527,16 @@
   }
 
   /**
-   * 手牌展示顺序：先固定主（大王→小王→当前阶级级牌按黑红梅方），再其余牌按黑红梅方、同花内点数从大到小。
-   * ``st.trump``：``level_rank``、``trump_suit``（无主时字面花色的非级牌仍按黑红梅方排；级牌始终在固定主区间）。
+   * 手牌展示顺序：固定主（大王→小王→级牌按黑红梅方）→有主时再排主花色非级牌（点数从大至小）
+   * →其余副牌按黑红梅方、同花内从大至小。无主则无「主花色」段。
    */
   function sortHandForReveal(cards, st) {
     const trump = st && st.trump ? st.trump : {};
     const levelRank = Number(trump.level_rank);
     const lrOk = Number.isFinite(levelRank) && levelRank >= 2 && levelRank <= 14;
+    const tsRaw = trump.trump_suit;
+    const tsOk = typeof tsRaw === 'string' && /^[SHCD]$/.test(tsRaw) ? tsRaw : null;
+
     /** 黑桃·红桃·梅花·方块 */
     const suitOrder = { S: 0, H: 1, C: 2, D: 3 };
 
@@ -554,7 +557,11 @@
         return [0, 2, suitK, tie];
       }
 
-      return [1, suitK, -rank, tie];
+      if (tsOk && suit === tsOk) {
+        return [1, -rank, tie];
+      }
+
+      return [2, suitK, -rank, tie];
     }
 
     return [...cards].sort((a, b) => {
