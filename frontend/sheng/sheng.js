@@ -526,17 +526,46 @@
     return null;
   }
 
-  function sortHandForReveal(cards) {
-    const order = { S: 0, H: 1, D: 2, C: 3 };
+  /**
+   * 手牌展示顺序：先固定主（大王→小王→当前阶级级牌按黑红梅方），再其余牌按黑红梅方、同花内点数从大到小。
+   * ``st.trump``：``level_rank``、``trump_suit``（无主时字面花色的非级牌仍按黑红梅方排；级牌始终在固定主区间）。
+   */
+  function sortHandForReveal(cards, st) {
+    const trump = st && st.trump ? st.trump : {};
+    const levelRank = Number(trump.level_rank);
+    const lrOk = Number.isFinite(levelRank) && levelRank >= 2 && levelRank <= 14;
+    /** 黑桃·红桃·梅花·方块 */
+    const suitOrder = { S: 0, H: 1, C: 2, D: 3 };
+
+    function key(card) {
+      const kind = String(card.kind || '');
+      const cidTie = Number(card.cid);
+      const tie = Number.isFinite(cidTie) ? cidTie : 0;
+
+      if (kind === 'bj') return [0, 0, tie];
+      if (kind === 'sj') return [0, 1, tie];
+
+      const rank = Number(card.rank);
+      const suit = String(card.suit || '');
+      const so = suitOrder[suit];
+      const suitK = Number.isFinite(so) ? so : 99;
+
+      if (lrOk && rank === levelRank) {
+        return [0, 2, suitK, tie];
+      }
+
+      return [1, suitK, -rank, tie];
+    }
+
     return [...cards].sort((a, b) => {
-      const ak = String(a.kind || '');
-      const bk = String(b.kind || '');
-      if (ak === 'bj' || ak === 'sj') return 1;
-      if (bk === 'bj' || bk === 'sj') return -1;
-      const sa = order[String(a.suit)] ?? 99;
-      const sb = order[String(b.suit)] ?? 99;
-      if (sa !== sb) return sa - sb;
-      return Number(b.rank || 0) - Number(a.rank || 0);
+      const ka = key(a);
+      const kb = key(b);
+      for (let i = 0; i < Math.max(ka.length, kb.length); i++) {
+        const x = ka[i] ?? 0;
+        const y = kb[i] ?? 0;
+        if (x !== y) return x - y;
+      }
+      return 0;
     });
   }
 
@@ -936,7 +965,7 @@
       });
     }
 
-    const sorted = sortHandForReveal(mine);
+    const sorted = sortHandForReveal(mine, st);
     const shouldStagger =
       st.phase === 'play' && epochKey !== dealAnimConsumedKey && !tricking;
 
