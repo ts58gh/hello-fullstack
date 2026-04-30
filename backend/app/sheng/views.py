@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .cards import PhysCard
-from .combos import parse_combo
+from .combos import parse_combo_relaxed
 
 from .friend import FriendCall
 from .hand import RunningHand
@@ -27,7 +27,7 @@ def _serialize_card(c: PhysCard) -> dict[str, Any]:
 
 
 def _legal_option_pub(ctx: TrumpContext, cards: list[PhysCard]) -> dict[str, Any]:
-    pb = parse_combo(ctx, list(cards))
+    pb = parse_combo_relaxed(ctx, list(cards))
     return {
         "combo_kind": pb.kind.value,
         "card_ids": [c.cid for c in sorted(cards, key=lambda x: x.cid)],

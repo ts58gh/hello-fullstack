@@ -10,7 +10,7 @@ from collections import defaultdict
 from itertools import combinations, product
 
 from .cards import JokerFace, PhysCard, RegularFace, Suit
-from .combos import ComboKind, ParsedCombo, parse_combo
+from .combos import ComboKind, ParsedCombo, parse_combo, parse_combo_relaxed
 from .combos import _legal_pair as legal_pair_cards
 from .combos import _legal_triple as legal_triple_cards
 from .follow import follow_candidates_single
@@ -315,6 +315,23 @@ def legal_follow_triple(ctx: TrumpContext, led: ParsedCombo, hand: list[PhysCard
     return sorted(all_t_map.values(), key=lambda zs: tuple(c.cid for c in zs))[:600]
 
 
+def _fallback_n_card_bundles(hand: list[PhysCard], n: int, cap: int = 600) -> list[list[PhysCard]]:
+    """Every n-card subset (used when structured follow enumeration is empty: mixed-suit dumps)."""
+
+    if n <= 0 or n > len(hand):
+        return []
+    picks: dict[frozenset[int], list[PhysCard]] = {}
+    hs = sorted(hand, key=lambda x: x.cid)
+    for comb in combinations(hs, n):
+        cards_l = sorted(comb, key=lambda z: z.cid)
+        k = frozenset(c.cid for c in cards_l)
+        if k not in picks:
+            picks[k] = cards_l
+            if len(picks) >= cap:
+                break
+    return sorted(picks.values(), key=lambda xs: (tuple(c.cid for c in xs)))
+
+
 def legal_follow_combo(ctx: TrumpContext, led: ParsedCombo, hand: list[PhysCard]) -> list[list[PhysCard]]:
     if led.kind == ComboKind.SINGLE:
         return [[c] for c in follow_candidates_single(ctx, led.cards[0], hand)]
@@ -332,14 +349,19 @@ def legal_plays_for_turn(ctx: TrumpContext, trick: list[tuple[int, tuple[PhysCar
     if not trick:
         return legal_leading_plays(ctx, hand)
     leader = parse_combo(ctx, list(trick[0][1]))
-    return legal_follow_combo(ctx, leader, hand)
+    out = legal_follow_combo(ctx, leader, hand)
+    if not out and hand:
+        n = len(leader.cards)
+        out = _fallback_n_card_bundles(hand, n)
+    return out
 
 
 def combo_trick_sort_key(ctx: TrumpContext, pb: ParsedCombo, play_order: int) -> tuple:
     """Comparable key across seats; first-seat tie-break prefers earlier lead."""
 
+    tier = -1 if pb.kind == ComboKind.DUMP else 0
     cores = tuple(sorted((strength_key(ctx, c, play_index=0)[:-1] for c in pb.cards), reverse=True))
-    return (cores, -play_order)
+    return (tier, cores, -play_order)
 
 
 def combo_trick_winner_seat(ctx: TrumpContext, trick: list[tuple[int, tuple[PhysCard, ...]]]) -> int:
@@ -347,7 +369,7 @@ def combo_trick_winner_seat(ctx: TrumpContext, trick: list[tuple[int, tuple[Phys
 
     if not trick:
         raise ValueError("empty trick")
-    parsed = [(s, parse_combo(ctx, list(cs))) for s, cs in trick]
+    parsed = [(s, parse_combo_relaxed(ctx, list(cs))) for s, cs in trick]
     best_seat, best_key = parsed[0][0], combo_trick_sort_key(ctx, parsed[0][1], 0)
     for i, (seat, pb) in enumerate(parsed):
         k = combo_trick_sort_key(ctx, pb, i)

@@ -21,6 +21,7 @@ class ComboKind(str, Enum):
     PAIR = "pair"
     TRACTOR_PAIR = "tractor_pair"
     TRIPLE = "triple"
+    DUMP = "dump"
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,17 @@ def parse_combo(ctx: TrumpContext, cards: list[PhysCard]) -> ParsedCombo:
     if n % 2 == 0 and n >= 4 and _plain_suit_tractor(ctx, cards):
         return ParsedCombo(ComboKind.TRACTOR_PAIR, tuple(cards))
     raise ValueError("unsupported combo shape for v1 engine")
+
+
+def parse_combo_relaxed(ctx: TrumpContext, cards: list[PhysCard]) -> ParsedCombo:
+    """Like :func:`parse_combo`, but treat ill-shaped plays as DUMP (mixed-suit discard / follow)."""
+
+    try:
+        return parse_combo(ctx, cards)
+    except ValueError:
+        if not cards:
+            raise ValueError("empty combo") from None
+        return ParsedCombo(ComboKind.DUMP, tuple(cards))
 
 
 def _plain_suit_tractor(ctx: TrumpContext, cards: list[PhysCard]) -> bool:

@@ -633,7 +633,22 @@ select {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  margin-top: 12px;
+}
+.my-play-bar--above-hand {
+  margin-top: 2px;
+  margin-bottom: 10px;
+  width: 100%;
+  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+}
+.my-play-bar--above-hand .btn {
+  min-width: 120px;
+}
+.my-play-bar--above-hand .play-hint {
+  flex: none;
+  max-width: 36rem;
+  text-align: center;
 }
 .my-play-bar .btn:disabled {
   opacity: 0.45;

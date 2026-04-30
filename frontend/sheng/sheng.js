@@ -281,7 +281,7 @@
     if (!st || st.phase !== 'play') return;
     const actor = st.to_act_seat;
     if (actor === undefined || actor === null) return;
-    if (actor === st.viewer_seat) return;
+    if (Number(actor) === Number(st.viewer_seat)) return;
 
     botBusy = true;
     try {
@@ -481,12 +481,23 @@
     return { x: 50 + r * Math.cos(deg), y: 50 + r * Math.sin(deg) };
   }
 
+  /** Canonical numeric card id for Set / compares (handles string ids from JSON). */
+  function cidKey(x) {
+    const n = Number(x);
+    return Number.isFinite(n) ? n : null;
+  }
+
   /** @param {any} lp One entry from ``legal_plays`` */
   function legalOptionCardIds(lp) {
     if (!lp) return [];
-    if (Array.isArray(lp.card_ids) && lp.card_ids.length) return lp.card_ids.map((x) => Number(x));
-    if (Array.isArray(lp.cards) && lp.cards.length) return lp.cards.map((c) => Number(c.cid));
-    if (lp.card != null && lp.card.cid != null) return [Number(lp.card.cid)];
+    if (Array.isArray(lp.card_ids) && lp.card_ids.length)
+      return lp.card_ids.map((x) => cidKey(x)).filter((n) => n != null);
+    if (Array.isArray(lp.cards) && lp.cards.length)
+      return lp.cards.map((c) => cidKey(c.cid)).filter((n) => n != null);
+    if (lp.card != null) {
+      const n = cidKey(lp.card.cid);
+      return n != null ? [n] : [];
+    }
     return [];
   }
 
@@ -499,7 +510,8 @@
   function sortedIdKey(ids) {
     return JSON.stringify(
       [...ids]
-        .map(Number)
+        .map((x) => cidKey(x))
+        .filter((n) => n != null)
         .sort((a, b) => a - b),
     );
   }
@@ -509,7 +521,7 @@
     const want = sortedIdKey(selectedIds);
     for (const lp of legalPlays || []) {
       const ids = legalOptionCardIds(lp);
-      if (ids.length && sortedIdKey(ids) === want) return ids.map(Number);
+      if (ids.length && sortedIdKey(ids) === want) return ids.slice();
     }
     return null;
   }
@@ -649,9 +661,10 @@
 
   function updateSeatActingHighlight(st) {
     if (!board) return;
+    const act = st?.to_act_seat != null ? Number(st.to_act_seat) : NaN;
     board.querySelectorAll('.sb-seat').forEach((n) => {
       const s = Number(n.dataset.seat);
-      const on = st.phase === 'play' && Number.isFinite(s) && s === st.to_act_seat;
+      const on = st.phase === 'play' && Number.isFinite(s) && Number.isFinite(act) && s === act;
       n.classList.toggle('sb-seat--acting', !!on);
     });
   }
@@ -808,8 +821,8 @@
     const next = [];
     const used = {};
     for (const cidRaw of selectedPlayIds) {
-      const cid = Number(cidRaw);
-      if (!legalPlaysUnion.has(cid)) continue;
+      const cid = cidKey(cidRaw);
+      if (cid == null || !legalPlaysUnion.has(cid)) continue;
       const cap = handCounts[cid] || 0;
       used[cid] = (used[cid] || 0) + 1;
       if (used[cid] <= cap) next.push(cid);
@@ -820,9 +833,16 @@
   function renderMyHand(st, myTurn, legalPlays) {
     if (!myHandDock) return;
     const legalUnion = unionLegalTouchIds(legalPlays);
-    const mine = (st.hands || [])[st.viewer_seat];
+    const viewerNum = Number(st.viewer_seat);
+    const mine = Number.isFinite(viewerNum) ? (st.hands || [])[viewerNum] : [];
     const handCounts = {};
-    if (Array.isArray(mine)) mine.forEach((c) => (handCounts[c.cid] = (handCounts[c.cid] || 0) + 1));
+    if (Array.isArray(mine)) {
+      mine.forEach((c) => {
+        const ck = cidKey(c.cid);
+        if (ck == null) return;
+        handCounts[ck] = (handCounts[ck] || 0) + 1;
+      });
+    }
 
     if (!myTurn) selectedPlayIds = [];
     else pruneSelectedPlayIds(legalUnion, handCounts);
@@ -840,12 +860,9 @@
     title.className = 'my-hand-title';
     title.textContent = '你的手牌';
     myHandDock.appendChild(title);
-    const row = document.createElement('div');
-    row.className = 'my-hand-row';
-    myHandDock.appendChild(row);
 
     const bar = document.createElement('div');
-    bar.className = 'my-play-bar';
+    bar.className = 'my-play-bar my-play-bar--above-hand';
     const btnPlay = document.createElement('button');
     btnPlay.type = 'button';
     btnPlay.className = 'btn primary';
@@ -856,6 +873,10 @@
     bar.appendChild(hintSpan);
     myHandDock.appendChild(bar);
 
+    const row = document.createElement('div');
+    row.className = 'my-hand-row';
+    myHandDock.appendChild(row);
+
     function applyHandSelectionHighlights() {
       const need = {};
       selectedPlayIds.forEach((id) => {
@@ -863,7 +884,8 @@
       });
       const seen = {};
       row.querySelectorAll('.card-face').forEach((x) => {
-        const id = Number(x.dataset.pickCid);
+        const id = cidKey(x.dataset.pickCid);
+        if (id == null) return;
         const n = need[id] || 0;
         seen[id] = (seen[id] || 0) + 1;
         x.classList.toggle('card-selected', n > 0 && seen[id] <= n);
@@ -896,17 +918,18 @@
     }
 
     function wirePick(el, c) {
-      el.dataset.pickCid = String(c.cid);
-      if (!(myTurn && legalUnion.has(c.cid))) return;
+      const ck = cidKey(c.cid);
+      if (ck == null) return;
+      el.dataset.pickCid = String(ck);
+      if (!(myTurn && legalUnion.has(ck))) return;
       el.addEventListener('click', () => {
         if (dealingInProgress) return;
-        const cid = Number(c.cid);
-        const i = selectedPlayIds.indexOf(cid);
+        const i = selectedPlayIds.indexOf(ck);
         if (i >= 0) selectedPlayIds.splice(i, 1);
         else {
-          const cur = selectedPlayIds.filter((x) => x === cid).length;
-          if (cur >= (handCounts[cid] || 0)) return;
-          selectedPlayIds.push(cid);
+          const cur = selectedPlayIds.filter((x) => x === ck).length;
+          if (cur >= (handCounts[ck] || 0)) return;
+          selectedPlayIds.push(ck);
         }
         applyHandSelectionHighlights();
         updatePlayChrome();
@@ -924,8 +947,10 @@
       selectedPlayIds = [];
       updatePlayChrome();
       sorted.forEach((c, i) => {
+        const ck = cidKey(c.cid);
+        const playable = myTurn && ck != null && legalUnion.has(ck);
         const el = document.createElement('div');
-        el.className = 'card-face card-deal-pending' + (myTurn && legalUnion.has(c.cid) ? ' playable' : ' dim');
+        el.className = 'card-face card-deal-pending' + (playable ? ' playable' : ' dim');
         applyCardFace(el, c);
         el.style.opacity = '0';
         el.title = (c.label || '') + ' · cid=' + c.cid;
@@ -947,7 +972,8 @@
     } else {
       sorted.forEach((c) => {
         const el = document.createElement('div');
-        el.className = 'card-face' + (myTurn && legalUnion.has(c.cid) ? ' playable' : ' dim');
+        const ckDeal = cidKey(c.cid);
+        el.className = 'card-face' + (myTurn && ckDeal != null && legalUnion.has(ckDeal) ? ' playable' : ' dim');
         applyCardFace(el, c);
         el.title = (c.label || '') + ' · cid=' + c.cid;
         wirePick(el, c);
@@ -972,8 +998,10 @@
     updateSeatActingHighlight(st);
 
     const legal = st.legal_plays || [];
-    const viewer = st.viewer_seat;
-    const myTurn = st.phase === 'play' && st.to_act_seat === viewer;
+    const viewerNum = Number(st.viewer_seat);
+    const actNum = st.to_act_seat != null ? Number(st.to_act_seat) : NaN;
+    const myTurn =
+      st.phase === 'play' && Number.isFinite(viewerNum) && Number.isFinite(actNum) && viewerNum === actNum;
 
     renderMyHand(st, myTurn, legal);
 
@@ -993,7 +1021,7 @@
 
     statusLine.textContent =
       st.phase === 'play'
-        ? `轮到 座${st.to_act_seat} · 你在 座${viewer}` +
+        ? `轮到 座${st.to_act_seat} · 你在 座${viewerNum}` +
           (myTurn
             ? dealingInProgress
               ? ' — 发牌后可选手牌组成合法组合，再点出牌'
@@ -1018,8 +1046,15 @@
   function submitPlayCardIds(cardIds) {
     if (dealingInProgress) return;
     const st = app.lastState;
-    const v = st && typeof st.viewer_seat === 'number' ? st.viewer_seat : null;
-    if (!st || st.phase !== 'play' || typeof st.to_act_seat !== 'number' || v === null || st.to_act_seat !== v) {
+    const v = Number(st?.viewer_seat);
+    const t = st?.to_act_seat != null ? Number(st.to_act_seat) : NaN;
+    if (
+      !st ||
+      st.phase !== 'play' ||
+      !Number.isFinite(v) ||
+      !Number.isFinite(t) ||
+      v !== t
+    ) {
       selectedPlayIds = [];
       statusLine.textContent = '出牌已过时（请先同步状态）…';
       void fetchStateRest();
