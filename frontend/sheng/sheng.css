@@ -74,7 +74,7 @@ body {
 }
 
 main {
-  max-width: min(1920px, 100vw - 8px);
+  max-width: min(2160px, 100vw - 6px);
   margin: 0 auto;
   padding: 10px;
 }
@@ -308,7 +308,7 @@ select {
 
 .game-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(228px, 280px);
+  grid-template-columns: minmax(0, 1fr) minmax(192px, 236px);
   gap: 12px 14px;
   padding: 0 6px 12px;
   align-items: start;
@@ -418,9 +418,9 @@ body.board-resize-dragging {
     '. n .'
     'w c e'
     '. s .';
-  grid-template-columns: minmax(148px, 12vw) minmax(260px, 1fr) minmax(148px, 12vw);
+  grid-template-columns: minmax(118px, 9vw) minmax(336px, 1fr) minmax(118px, 9vw);
   grid-template-rows: auto minmax(368px, 1fr) auto;
-  gap: 12px 14px;
+  gap: 12px 12px;
 }
 
 .sb-seat-n {
@@ -527,8 +527,8 @@ body.board-resize-dragging {
 .sb-trick-playmat.trick-playmat:not(.trick-playmat--mini) {
   position: relative;
   width: 100%;
-  max-width: min(940px, 100%);
-  min-width: min(520px, 100%);
+  max-width: min(1180px, 100%);
+  min-width: min(560px, 100%);
   height: clamp(416px, 51vh, 656px);
   max-height: none;
   margin: 0 auto;
