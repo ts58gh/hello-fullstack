@@ -460,13 +460,13 @@
   }
 
   function seatRingPct(offset, np) {
-    const r = np === 4 ? 40 : np === 6 ? 44 : 40;
+    const r = np === 4 ? 43 : np === 6 ? 46 : 43;
     const deg = (90 + offset * (360 / np)) * (Math.PI / 180);
     return { left: 50 + r * Math.cos(deg), top: 50 + r * Math.sin(deg) };
   }
 
   function trickMatPct(offset, np) {
-    const r = np === 4 ? 32 : np === 6 ? 34 : 32;
+    const r = np === 4 ? 36 : np === 6 ? 39 : 36;
     const deg = (90 + offset * (360 / np)) * (Math.PI / 180);
     return { x: 50 + r * Math.cos(deg), y: 50 + r * Math.sin(deg) };
   }
@@ -567,6 +567,7 @@
     playmatEl.innerHTML = '';
     if (!plays || !plays.length) return;
     const hi = highlights || {};
+    const mini = playmatEl.classList.contains('trick-playmat--mini');
     plays.forEach((p) => {
       const seat = p.seat;
       const off = seatOffsetViewer(seat, viewerSeat, np);
@@ -576,7 +577,7 @@
       wrap.style.left = pos.x + '%';
       wrap.style.top = pos.y + '%';
       const cf = document.createElement('div');
-      cf.className = 'card-face card-face--sm';
+      cf.className = mini ? 'card-face card-face--sm' : 'card-face card-face--trick';
       applyCardFace(cf, p.card);
       wrap.appendChild(cf);
       const lb = document.createElement('div');

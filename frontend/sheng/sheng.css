@@ -74,7 +74,7 @@ body {
 }
 
 main {
-  max-width: 1220px;
+  max-width: 1380px;
   margin: 0 auto;
   padding: 12px;
 }
@@ -271,6 +271,21 @@ select {
   font-size: 9px;
 }
 
+.card-face--trick {
+  min-width: 58px;
+  width: 58px;
+  height: 82px;
+}
+.card-face--trick .card-suit-center {
+  font-size: 34px;
+}
+.card-face--trick .card-rank {
+  font-size: 12px;
+}
+.card-face--trick .card-suit-micro {
+  font-size: 12px;
+}
+
 .table-section {
   margin-top: 12px;
 }
@@ -316,7 +331,7 @@ select {
 
 .board {
   position: relative;
-  min-height: min(560px, 72vh);
+  min-height: min(820px, 88vh);
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: radial-gradient(ellipse 72% 58% at 50% 48%, #1f563c 0%, #0f2818 90%);
@@ -334,7 +349,7 @@ select {
   transform: translate(-50%, -50%);
   pointer-events: auto;
   text-align: center;
-  width: clamp(118px, 18vw, 168px);
+  width: clamp(128px, 20vw, 190px);
 }
 .seat-tag {
   font-size: 11px;
@@ -381,8 +396,8 @@ select {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(92%, 280px);
-  height: min(92%, 280px);
+  width: min(94%, 400px);
+  height: min(94%, 400px);
   pointer-events: none;
 }
 
@@ -392,8 +407,8 @@ select {
   height: 100%;
 }
 .trick-playmat--mini {
-  width: 200px;
-  height: 200px;
+  width: 240px;
+  height: 240px;
   margin: 6px auto 0;
 }
 .trick-mat-slot {
@@ -401,7 +416,7 @@ select {
   transform: translate(-50%, -50%);
 }
 .trick-mat-tag {
-  font-size: 10px;
+  font-size: 11px;
   color: rgba(255, 255, 255, 0.74);
 }
 .trick-mat-slot .card-face {
