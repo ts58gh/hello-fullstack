@@ -314,12 +314,6 @@ select {
   align-items: start;
 }
 
-/* In play: dedicate almost full viewport height to the felt area */
-#tableSection .board-column .sb-board {
-  min-height: max(608px, calc(80vh - 160px));
-  min-height: max(608px, calc(80dvh - 160px));
-}
-
 @media (max-width: 1000px) {
   .game-shell {
     grid-template-columns: 1fr;
@@ -329,6 +323,60 @@ select {
 .board-column {
   position: relative;
   min-width: 0;
+}
+
+/* 外层高度可拖拽；内置滚动防内容被裁切 */
+.board-resize-host {
+  position: relative;
+  width: 100%;
+  height: var(--sheng-board-h, clamp(420px, 48vh, 660px));
+  min-height: 240px;
+  max-height: min(1200px, calc(100vh - 100px));
+  max-height: min(1200px, calc(100dvh - 100px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-radius: 16px;
+  box-sizing: border-box;
+}
+
+.board-resize-host > .sb-board {
+  box-sizing: border-box;
+  min-height: 100%;
+}
+
+.board-resize-handle {
+  flex-shrink: 0;
+  height: 14px;
+  margin: 4px auto 10px;
+  max-width: 160px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  cursor: ns-resize;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.board-resize-handle:hover,
+.board-resize-handle:focus-visible {
+  background: rgba(255, 255, 255, 0.16);
+  outline: none;
+}
+
+.board-resize-handle::after {
+  content: '';
+  width: 40px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.4);
+}
+
+body.board-resize-dragging {
+  cursor: ns-resize !important;
+  user-select: none;
 }
 
 .meta-bar {
@@ -357,7 +405,6 @@ select {
   grid-template-columns: minmax(148px, 12vw) minmax(260px, 1fr) minmax(148px, 12vw);
   grid-template-rows: auto minmax(368px, 1fr) auto;
   gap: 12px 14px;
-  min-height: min(768px, 75vh);
 }
 
 .sb-seat-n {

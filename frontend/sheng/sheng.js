@@ -2,6 +2,7 @@
   const STORAGE_SESSION = 'hello_fullstack_sheng_session_v1';
   const STORAGE_API = 'hello_fullstack_api_base';
   const STORAGE_AUTOBOT = 'hello_fullstack_sheng_autobot_other';
+  const STORAGE_BOARD_H = 'hello_fullstack_sheng_board_height_v1';
 
   function normalizeBaseUrl(x) {
     return String(x || '')
@@ -90,6 +91,8 @@
   const trickArea = $('trickArea'); // legacy (unused)
   const handArea = $('handArea'); // legacy
   const tableSection = $('tableSection');
+  const boardResizeHost = $('boardResizeHost');
+  const boardResizeHandle = $('boardResizeHandle');
   const board = $('board');
   const metaBar = $('metaBar');
   const dealOverlay = $('dealOverlay');
@@ -1190,6 +1193,108 @@
       await fetchStateRest();
     }
   }
+
+  function initBoardResize() {
+    const host = boardResizeHost;
+    const handle = boardResizeHandle;
+    if (!host || !handle) return;
+
+    function bounds() {
+      const min = 240;
+      const max = Math.max(min + 80, Math.min(window.innerHeight - 96, 1200));
+      return { min, max };
+    }
+
+    function clampHeight(px) {
+      const { min, max } = bounds();
+      return Math.round(Math.min(max, Math.max(min, px)));
+    }
+
+    function readSaved() {
+      try {
+        const v = parseInt(localStorage.getItem(STORAGE_BOARD_H), 10);
+        return Number.isFinite(v) ? v : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function applyHeight(px) {
+      const h = clampHeight(px);
+      host.style.setProperty('--sheng-board-h', `${h}px`);
+      try {
+        localStorage.setItem(STORAGE_BOARD_H, String(h));
+      } catch (_) {}
+    }
+
+    const saved = readSaved();
+    if (saved != null) applyHeight(saved);
+
+    let drag = false;
+    let startY = 0;
+    let startH = 0;
+
+    function onMove(e) {
+      if (!drag) return;
+      applyHeight(startH + (e.clientY - startY));
+      e.preventDefault();
+    }
+
+    function endDrag(e) {
+      if (!drag) return;
+      drag = false;
+      document.body.classList.remove('board-resize-dragging');
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', endDrag);
+      window.removeEventListener('pointercancel', endDrag);
+      if (e && typeof handle.releasePointerCapture === 'function') {
+        try {
+          handle.releasePointerCapture(e.pointerId);
+        } catch (_) {}
+      }
+    }
+
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      drag = true;
+      startY = e.clientY;
+      startH = host.getBoundingClientRect().height;
+      document.body.classList.add('board-resize-dragging');
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch (_) {}
+      window.addEventListener('pointermove', onMove, { passive: false });
+      window.addEventListener('pointerup', endDrag);
+      window.addEventListener('pointercancel', endDrag);
+      e.preventDefault();
+    });
+
+    handle.addEventListener('dblclick', () => {
+      host.style.removeProperty('--sheng-board-h');
+      try {
+        localStorage.removeItem(STORAGE_BOARD_H);
+      } catch (_) {}
+    });
+
+    handle.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      const raw = host.style.getPropertyValue('--sheng-board-h').trim();
+      let base = parseInt(raw, 10);
+      if (!Number.isFinite(base)) base = host.getBoundingClientRect().height;
+      const delta = e.key === 'ArrowDown' ? 20 : -20;
+      applyHeight(base + delta);
+    });
+
+    window.addEventListener('resize', () => {
+      const prop = host.style.getPropertyValue('--sheng-board-h').trim();
+      if (!prop) return;
+      const cur = parseInt(prop, 10);
+      if (Number.isFinite(cur)) applyHeight(cur);
+    });
+  }
+
+  initBoardResize();
 
   trickHistorySelect?.addEventListener('change', () => {
     trickHistManual = true;
