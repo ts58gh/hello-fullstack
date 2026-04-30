@@ -3,6 +3,7 @@
   const STORAGE_API = 'hello_fullstack_api_base';
   const STORAGE_AUTOBOT = 'hello_fullstack_sheng_autobot_other';
   const STORAGE_BOARD_H = 'hello_fullstack_sheng_board_height_v1';
+  const STORAGE_BOARD_W = 'hello_fullstack_sheng_board_width_v1';
 
   function normalizeBaseUrl(x) {
     return String(x || '')
@@ -92,8 +93,10 @@
   const handArea = $('handArea'); // legacy
   const tableSection = $('tableSection');
   const gameShell = $('gameShell');
+  const boardResizeFrame = $('boardResizeFrame');
   const boardResizeHost = $('boardResizeHost');
   const boardResizeHandle = $('boardResizeHandle');
+  const boardResizeHandleX = $('boardResizeHandleX');
   const boardScaleWrap = $('boardScaleWrap');
   const board = $('board');
   const metaBar = $('metaBar');
@@ -1298,6 +1301,37 @@
       applyBoardHostHeight(saved, { persist: true });
     }
 
+    // Width resize (does not affect height).
+    function readSavedW() {
+      try {
+        const v = parseInt(localStorage.getItem(STORAGE_BOARD_W), 10);
+        return Number.isFinite(v) ? v : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function clampWidth(px) {
+      const fr = boardResizeFrame;
+      const cw = fr ? fr.getBoundingClientRect().width : window.innerWidth;
+      const min = 420;
+      const max = Math.max(min + 80, Math.min(cw - 30, 1800));
+      return Math.round(Math.min(max, Math.max(min, px)));
+    }
+
+    function applyWidth(px, persist) {
+      const w = clampWidth(px);
+      host.style.setProperty('--sheng-board-w', `${w}px`);
+      if (persist) {
+        try {
+          localStorage.setItem(STORAGE_BOARD_W, String(w));
+        } catch (_) {}
+      }
+    }
+
+    const savedW = readSavedW();
+    if (savedW != null) applyWidth(savedW, true);
+
     let drag = false;
     let startY = 0;
     let startH = 0;
@@ -1336,6 +1370,68 @@
       window.addEventListener('pointercancel', endDrag);
       e.preventDefault();
     });
+
+    // Horizontal handle: resize width only.
+    if (boardResizeHandleX) {
+      let dragX = false;
+      let startX = 0;
+      let startW = 0;
+
+      function onMoveX(e) {
+        if (!dragX) return;
+        applyWidth(startW + (e.clientX - startX), true);
+        scheduleBoardFit();
+        e.preventDefault();
+      }
+
+      function endDragX(e) {
+        if (!dragX) return;
+        dragX = false;
+        document.body.classList.remove('board-resize-dragging-x');
+        window.removeEventListener('pointermove', onMoveX);
+        window.removeEventListener('pointerup', endDragX);
+        window.removeEventListener('pointercancel', endDragX);
+        if (e && typeof boardResizeHandleX.releasePointerCapture === 'function') {
+          try {
+            boardResizeHandleX.releasePointerCapture(e.pointerId);
+          } catch (_) {}
+        }
+      }
+
+      boardResizeHandleX.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        dragX = true;
+        startX = e.clientX;
+        startW = host.getBoundingClientRect().width;
+        document.body.classList.add('board-resize-dragging-x');
+        try {
+          boardResizeHandleX.setPointerCapture(e.pointerId);
+        } catch (_) {}
+        window.addEventListener('pointermove', onMoveX, { passive: false });
+        window.addEventListener('pointerup', endDragX);
+        window.addEventListener('pointercancel', endDragX);
+        e.preventDefault();
+      });
+
+      boardResizeHandleX.addEventListener('dblclick', () => {
+        host.style.removeProperty('--sheng-board-w');
+        try {
+          localStorage.removeItem(STORAGE_BOARD_W);
+        } catch (_) {}
+        scheduleBoardFit();
+      });
+
+      boardResizeHandleX.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        const raw = host.style.getPropertyValue('--sheng-board-w').trim();
+        let base = parseInt(raw, 10);
+        if (!Number.isFinite(base)) base = host.getBoundingClientRect().width;
+        const delta = e.key === 'ArrowRight' ? 24 : -24;
+        applyWidth(base + delta, true);
+        scheduleBoardFit();
+      });
+    }
 
     handle.addEventListener('dblclick', () => {
       host.style.removeProperty('--sheng-board-h');

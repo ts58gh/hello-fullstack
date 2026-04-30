@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>升级 — 试玩</title>
-    <link rel="stylesheet" href="./sheng.css?v=board-fullwidth" />
+    <link rel="stylesheet" href="./sheng.css?v=board-resize-wh" />
   </head>
   <body>
     <header class="topbar">
@@ -126,12 +126,23 @@
               <span>发牌中… 稍后可叫朋友牌 / 理牌</span>
             </div>
             <div id="metaBar" class="meta-bar"></div>
-            <div id="boardResizeHost" class="board-resize-host">
-              <div class="board-fit-viewport">
-                <div id="boardScaleWrap" class="board-scale-wrap">
-                  <div id="board" class="board sb-board"></div>
+            <div id="boardResizeFrame" class="board-resize-frame">
+              <div id="boardResizeHost" class="board-resize-host">
+                <div class="board-fit-viewport">
+                  <div id="boardScaleWrap" class="board-scale-wrap">
+                    <div id="board" class="board sb-board"></div>
+                  </div>
                 </div>
               </div>
+              <div
+                id="boardResizeHandleX"
+                class="board-resize-handle-x"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="拖拽调整牌桌区域宽度（高度不变）"
+                title="左右拖拽调整牌桌区域宽度（高度不变） · 双击恢复默认"
+                tabindex="0"
+              ></div>
             </div>
             <div
               id="boardResizeHandle"
@@ -173,6 +184,6 @@
       </div>
     </main>
 
-    <script src="./sheng.js?v=board-fullwidth"></script>
+    <script src="./sheng.js?v=board-resize-wh"></script>
   </body>
 </html>
