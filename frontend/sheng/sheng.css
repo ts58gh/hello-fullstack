@@ -308,7 +308,7 @@ select {
 
 .game-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--sheng-side-w, 184px);
+  grid-template-columns: minmax(0, 1fr) var(--sheng-side-w, 172px);
   gap: 12px 10px;
   padding: 0 5px 12px;
   align-items: start;
@@ -481,8 +481,8 @@ body.board-resize-dragging-x {
     '. n .'
     'w c e'
     '. s .';
-  /* fr shares + min floor: avoids shrink-to-fit collapsing 1fr to min-only when width was auto */
-  grid-template-columns: minmax(92px, 0.32fr) minmax(268px, 1fr) minmax(92px, 0.32fr);
+  /* Prefer center felts: EW stay usable but give >60% linear share to trick column */
+  grid-template-columns: minmax(76px, 0.22fr) minmax(292px, 1fr) minmax(76px, 0.22fr);
   grid-template-rows: auto minmax(368px, 1fr) auto;
   gap: 12px 12px;
 }
@@ -607,7 +607,7 @@ body.board-resize-dragging-x {
   flex-direction: column;
   align-items: center;
   width: auto;
-  max-width: min(300px, 44vw);
+  max-width: min(360px, 50%);
 }
 /* Stacked combo (pair / tractor / triple) on the trick mat */
 .trick-cards-stack {

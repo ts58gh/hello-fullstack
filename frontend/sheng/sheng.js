@@ -1317,8 +1317,8 @@
     function clampSideW(px) {
       const shell = gameShell;
       const full = shell ? shell.getBoundingClientRect().width : window.innerWidth;
-      const min = 180;
-      const max = Math.max(min + 60, Math.min(full * 0.46, 420));
+      const min = 168;
+      const max = Math.max(min + 40, Math.min(full * 0.4, 400));
       return Math.round(Math.min(max, Math.max(min, px)));
     }
 
@@ -1409,7 +1409,7 @@
         startX = e.clientX;
         const cur = gameShell?.style.getPropertyValue('--sheng-side-w').trim();
         startW = parseInt(cur, 10);
-        if (!Number.isFinite(startW)) startW = 184;
+        if (!Number.isFinite(startW)) startW = 172;
         document.body.classList.add('board-resize-dragging-x');
         try {
           boardResizeHandleX.setPointerCapture(e.pointerId);
@@ -1433,7 +1433,7 @@
         e.preventDefault();
         const raw = gameShell?.style.getPropertyValue('--sheng-side-w').trim();
         let base = parseInt(raw, 10);
-        if (!Number.isFinite(base)) base = 184;
+        if (!Number.isFinite(base)) base = 172;
         const delta = e.key === 'ArrowRight' ? 24 : -24;
         applySideW(base + delta, true);
         scheduleBoardFit();
