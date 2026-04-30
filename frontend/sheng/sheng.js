@@ -459,12 +459,6 @@
     return ((physicalSeat - viewerSeat + np) % np + np) % np;
   }
 
-  function seatRingPct(offset, np) {
-    const r = np === 4 ? 43 : np === 6 ? 46 : 43;
-    const deg = (90 + offset * (360 / np)) * (Math.PI / 180);
-    return { left: 50 + r * Math.cos(deg), top: 50 + r * Math.sin(deg) };
-  }
-
   function trickMatPct(offset, np) {
     const r = np === 4 ? 36 : np === 6 ? 39 : 36;
     const deg = (90 + offset * (360 / np)) * (Math.PI / 180);
@@ -494,7 +488,33 @@
     }
     if (!count)
       return '<span class="seat-hand-empty">—</span>';
-    return `<div class="card-back-stack" title="${count} 张">${h}</div><span class="seat-hand-count">×${count}</span>`;
+    return `<div class="seat-opp-wrap"><div class="card-back-stack" title="${count} 张">${h}</div><span class="seat-hand-count">×${count}</span></div>`;
+  }
+
+  function fillSeatPanel(el, seat, st, hands, viewer, np) {
+    el.dataset.seat = String(seat);
+    el.classList.add('sb-seat');
+    const lbl = document.createElement('div');
+    lbl.className = 'sb-seat-label';
+    const tag = ['座 ' + seat];
+    if (seat === st.declarer_seat) tag.push('庄');
+    if (seat === viewer) tag.push('你');
+    let line = tag.join(' · ');
+    if (seat === viewer) line += ' · 手牌在下方横排';
+    lbl.textContent = line;
+    el.appendChild(lbl);
+    const handBox = document.createElement('div');
+    if (seat === viewer) {
+      handBox.className = 'sb-hand-row sb-hand-row--viewer-hint';
+      handBox.innerHTML = '<span class="seat-hand-empty muted small">见下方横排</span>';
+    } else {
+      const hi = hands[seat];
+      const cnt = hi && typeof hi.count === 'number' ? hi.count : 0;
+      const vert = np === 4 && (el.classList.contains('sb-seat-w') || el.classList.contains('sb-seat-e'));
+      handBox.className = vert ? 'sb-hand-col' : 'sb-hand-row';
+      handBox.innerHTML = backStacksHtml(cnt);
+    }
+    el.appendChild(handBox);
   }
 
   function ensureBoardLayout(st) {
@@ -512,53 +532,78 @@
       return pm;
     }
     boardLayoutKey = key;
-    board.className = 'board board-np-' + np;
     board.innerHTML = '';
-    const ring = document.createElement('div');
-    ring.className = 'board-ring';
-    const center = document.createElement('div');
-    center.className = 'board-center';
-    pm = document.createElement('div');
-    pm.className = 'trick-playmat';
-    center.appendChild(pm);
-    board.appendChild(ring);
-    board.appendChild(center);
 
-    for (let offset = 0; offset < np; offset++) {
-      const seat = (v + offset) % np;
-      const pct = seatRingPct(offset, np);
-      const node = document.createElement('div');
-      node.className = 'seat-node';
-      node.dataset.seat = String(seat);
-      node.style.left = pct.left + '%';
-      node.style.top = pct.top + '%';
+    if (np === 4) {
+      board.className = 'sb-board board board-np-4';
 
-      const tag = ['座 ' + seat];
-      if (seat === st.declarer_seat) tag.push('庄');
-      if (seat === v) tag.push('你');
+      const nEl = document.createElement('div');
+      nEl.className = 'sb-seat sb-seat-n';
+      fillSeatPanel(nEl, (v + 2) % 4, st, hands, v, np);
 
-      const seatLine = tag.join(' · ');
-      if (seat === v) {
-        node.innerHTML = `<div class="seat-tag">${escapeHtml(seatLine)} · 我方手牌在下方横排</div>`;
-      } else {
-        const hi = hands[seat];
-        const cnt = hi && typeof hi.count === 'number' ? hi.count : 0;
-        node.innerHTML = `<div class="seat-tag">${escapeHtml(seatLine)}</div><div class="seat-opp-wrap">${backStacksHtml(
-          cnt
-        )}</div>`;
-      }
-      ring.appendChild(node);
+      const wEl = document.createElement('div');
+      wEl.className = 'sb-seat sb-seat-w';
+      fillSeatPanel(wEl, (v + 1) % 4, st, hands, v, np);
+
+      const center = document.createElement('div');
+      center.className = 'sb-center-b';
+      pm = document.createElement('div');
+      pm.className = 'sb-trick-playmat trick-playmat';
+      center.appendChild(pm);
+
+      const eEl = document.createElement('div');
+      eEl.className = 'sb-seat sb-seat-e';
+      fillSeatPanel(eEl, (v + 3) % 4, st, hands, v, np);
+
+      const sEl = document.createElement('div');
+      sEl.className = 'sb-seat sb-seat-s';
+      fillSeatPanel(sEl, v, st, hands, v, np);
+
+      board.appendChild(nEl);
+      board.appendChild(wEl);
+      board.appendChild(center);
+      board.appendChild(eEl);
+      board.appendChild(sEl);
+    } else {
+      board.className = 'sb-board sb-board--6 board board-np-6';
+
+      const top = document.createElement('div');
+      top.className = 'sb-six-top';
+      const mid = document.createElement('div');
+      mid.className = 'sb-six-mid';
+      pm = document.createElement('div');
+      pm.className = 'sb-trick-playmat trick-playmat';
+      mid.appendChild(pm);
+      const bot = document.createElement('div');
+      bot.className = 'sb-six-bot';
+
+      [4, 3, 2].forEach((off) => {
+        const el = document.createElement('div');
+        el.className = 'sb-seat sb-six-seat';
+        fillSeatPanel(el, (v + off) % 6, st, hands, v, np);
+        top.appendChild(el);
+      });
+      [5, 0, 1].forEach((off) => {
+        const el = document.createElement('div');
+        el.className = 'sb-seat sb-six-seat';
+        fillSeatPanel(el, (v + off) % 6, st, hands, v, np);
+        bot.appendChild(el);
+      });
+      board.appendChild(top);
+      board.appendChild(mid);
+      board.appendChild(bot);
     }
+
     updateSeatActingHighlight(st);
     return pm;
   }
 
   function updateSeatActingHighlight(st) {
     if (!board) return;
-    board.querySelectorAll('.seat-node').forEach((n) => {
+    board.querySelectorAll('.sb-seat').forEach((n) => {
       const s = Number(n.dataset.seat);
       const on = st.phase === 'play' && Number.isFinite(s) && s === st.to_act_seat;
-      n.classList.toggle('seat-node--acting', !!on);
+      n.classList.toggle('sb-seat--acting', !!on);
     });
   }
 
@@ -571,20 +616,34 @@
     plays.forEach((p) => {
       const seat = p.seat;
       const off = seatOffsetViewer(seat, viewerSeat, np);
-      const pos = trickMatPct(off, np);
       const wrap = document.createElement('div');
-      wrap.className = 'trick-mat-slot';
-      wrap.style.left = pos.x + '%';
-      wrap.style.top = pos.y + '%';
       const cf = document.createElement('div');
       cf.className = mini ? 'card-face card-face--sm' : 'card-face card-face--trick';
       applyCardFace(cf, p.card);
       wrap.appendChild(cf);
       const lb = document.createElement('div');
-      lb.className = 'trick-mat-tag';
       lb.textContent = '座' + seat;
+      if (mini) {
+        const pos = trickMatPct(off, np);
+        wrap.className = 'trick-mat-slot';
+        wrap.style.left = pos.x + '%';
+        wrap.style.top = pos.y + '%';
+        lb.className = 'trick-mat-tag';
+        if (hi.winnerSeat === seat) wrap.classList.add('trick-mat-slot--win');
+      } else if (np === 4) {
+        const dir = ['s', 'w', 'n', 'e'][off];
+        wrap.className = 'sb-trick-slot sb-tr-pos-' + dir;
+        lb.className = 'sb-trick-tag';
+        if (hi.winnerSeat === seat) wrap.classList.add('sb-trick-slot--win');
+      } else {
+        const pos = trickMatPct(off, np);
+        wrap.className = 'trick-mat-slot';
+        wrap.style.left = pos.x + '%';
+        wrap.style.top = pos.y + '%';
+        lb.className = 'trick-mat-tag';
+        if (hi.winnerSeat === seat) wrap.classList.add('trick-mat-slot--win');
+      }
       wrap.appendChild(lb);
-      if (hi.winnerSeat === seat) wrap.classList.add('trick-mat-slot--win');
       playmatEl.appendChild(wrap);
     });
   }

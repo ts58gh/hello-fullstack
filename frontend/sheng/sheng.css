@@ -74,7 +74,7 @@ body {
 }
 
 main {
-  max-width: 1380px;
+  max-width: min(1680px, 100vw - 20px);
   margin: 0 auto;
   padding: 12px;
 }
@@ -308,8 +308,9 @@ select {
 
 .game-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
   gap: 16px;
+  padding: 0 16px 20px;
   align-items: start;
 }
 
@@ -323,56 +324,111 @@ select {
   position: relative;
   min-width: 0;
 }
+
+.meta-bar {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 10px;
   line-height: 1.55;
 }
 
-.board {
+/* ========== Bridge-style table (matches frontend/bridge board grid) ========== */
+.sb-board {
+  --felt-top: #1a583d;
+  --felt-edge: #0d3424;
   position: relative;
-  min-height: min(820px, 88vh);
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: radial-gradient(ellipse 72% 58% at 50% 48%, #1f563c 0%, #0f2818 90%);
-  box-shadow: inset 0 0 55px rgba(0, 0, 0, 0.38);
+  color: #fff;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--felt-edge);
+  background: radial-gradient(circle at 50% 50%, var(--felt-top) 0%, var(--felt-edge) 78%);
+  box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.35);
+  display: grid;
+  grid-template-areas:
+    '. n .'
+    'w c e'
+    '. s .';
+  grid-template-columns: minmax(130px, 14vw) minmax(0, 1fr) minmax(130px, 14vw);
+  grid-template-rows: auto minmax(360px, 1fr) auto;
+  gap: 14px 18px;
+  min-height: min(900px, 92vh);
 }
 
-.board-ring {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.seat-node {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  pointer-events: auto;
+.sb-seat-n {
+  grid-area: n;
   text-align: center;
-  width: clamp(128px, 20vw, 190px);
 }
-.seat-tag {
-  font-size: 11px;
-  letter-spacing: 0.03em;
-  color: rgba(255, 255, 255, 0.88);
+.sb-seat-s {
+  grid-area: s;
+  text-align: center;
 }
-.seat-node--acting .seat-tag {
-  font-weight: 800;
-  color: var(--accent);
-  text-shadow: 0 0 10px rgba(212, 175, 55, 0.4);
+.sb-seat-w {
+  grid-area: w;
+  align-self: center;
 }
-
-.seat-opp-wrap {
+.sb-seat-e {
+  grid-area: e;
+  align-self: center;
+  text-align: right;
+}
+.sb-center-b {
+  grid-area: c;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  margin-top: 4px;
+  justify-content: center;
+  gap: 12px;
+  min-height: 0;
+}
+
+.sb-seat-label {
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 6px;
+}
+.sb-seat--acting .sb-seat-label {
+  font-weight: 800;
+  color: var(--accent);
+  text-shadow: 0 0 12px rgba(212, 175, 55, 0.38);
+}
+
+.sb-hand-row {
+  display: flex;
+  gap: 5px;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: flex-end;
+  min-height: 110px;
+}
+.sb-hand-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  min-height: 260px;
+}
+.sb-seat-s .sb-hand-row {
+  flex-wrap: wrap;
+}
+.sb-hand-row--viewer-hint {
+  min-height: 48px;
+  align-items: center;
+}
+
+.seat-opp-wrap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 6px;
 }
 .card-back-stack {
   position: relative;
-  width: 40px;
-  height: 56px;
+  width: 42px;
+  height: 58px;
 }
 .card-back-mini {
   position: absolute;
@@ -391,21 +447,106 @@ select {
   color: rgba(255, 255, 255, 0.76);
 }
 
-.board-center {
+.sb-seat-w .sb-hand-col {
+  align-items: flex-end;
+}
+.sb-seat-e .sb-hand-col {
+  align-items: flex-start;
+}
+
+.sb-trick-playmat.trick-playmat:not(.trick-playmat--mini) {
+  position: relative;
+  width: min(100%, 360px);
+  height: min(58vh, 420px);
+  max-height: 440px;
+  flex-shrink: 0;
+}
+
+/* Four players: trick cards at N/W/E/S like bridge */
+.sb-trick-slot {
   position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 56px;
+}
+.sb-trick-slot .card-face--trick {
+  width: 56px;
+  min-width: 56px;
+  height: 80px;
+}
+.sb-trick-slot .card-suit-center {
+  font-size: 22px;
+}
+.sb-tr-pos-n {
+  top: 4px;
   left: 50%;
+  transform: translateX(-50%);
+}
+.sb-tr-pos-s {
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.sb-tr-pos-w {
+  left: 6%;
   top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(94%, 400px);
-  height: min(94%, 400px);
-  pointer-events: none;
+  transform: translateY(-50%);
+}
+.sb-tr-pos-e {
+  right: 6%;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.sb-trick-slot--win .card-face {
+  outline: 2px solid rgba(255, 215, 0, 0.9);
+  box-shadow: 0 0 14px rgba(255, 215, 80, 0.48);
+}
+.sb-trick-tag {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.76);
+  margin-top: 3px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Six players: top row (3) + large center trick + bottom row (3) */
+.sb-board--6 {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: min(920px, 94vh);
+  grid-template: none;
+  grid-template-columns: unset;
+  grid-template-rows: unset;
+}
+.sb-six-top,
+.sb-six-bot {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.sb-six-mid {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: min(400px, 50vh);
+}
+.sb-six-seat {
+  flex: 0 1 220px;
+  text-align: center;
+}
+.sb-six-seat .sb-hand-row {
+  min-height: 100px;
 }
 
 .trick-playmat {
   position: relative;
-  width: 100%;
-  height: 100%;
 }
+
 .trick-playmat--mini {
   width: 240px;
   height: 240px;
