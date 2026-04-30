@@ -314,6 +314,21 @@ select {
   align-items: start;
 }
 
+.game-shell.game-shell--6 {
+  grid-template-columns: 1fr;
+}
+
+.game-shell.game-shell--6 .side-panels {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.game-shell.game-shell--6 .panel {
+  flex: 1 1 360px;
+  max-width: 900px;
+}
+
 @media (max-width: 1000px) {
   .game-shell {
     grid-template-columns: 1fr;

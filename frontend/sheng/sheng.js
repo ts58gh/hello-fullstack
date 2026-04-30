@@ -91,6 +91,7 @@
   const trickArea = $('trickArea'); // legacy (unused)
   const handArea = $('handArea'); // legacy
   const tableSection = $('tableSection');
+  const gameShell = $('gameShell');
   const boardResizeHost = $('boardResizeHost');
   const boardResizeHandle = $('boardResizeHandle');
   const boardScaleWrap = $('boardScaleWrap');
@@ -1073,6 +1074,7 @@
     const np = st.num_players || app.np;
     app.np = np;
     tableSection?.classList.remove('hidden');
+    gameShell?.classList.toggle('game-shell--6', np === 6);
 
     const playmat = ensureBoardLayout(st);
     fillMetaBar(st);
