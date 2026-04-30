@@ -154,11 +154,11 @@ async def create_room(
     return room, toks
 
 
-async def submit_play(table_id: str, token: str, card_id: int) -> dict[str, Any]:
+async def submit_play(table_id: str, token: str, card_ids: list[int]) -> dict[str, Any]:
     async with _lock_for(table_id):
         room = get_room(table_id)
         seat = find_seat_for_token(room, token)
-        out = room.hand.play_single(seat, card_id)
+        out = room.hand.play_cards(seat, list(card_ids))
         if room.hand.phase == "scored" and room.hand.result is not None:
             lb = room.hand.result.level_breakdown
             scorer_declarer = room.hand.declarer_seat

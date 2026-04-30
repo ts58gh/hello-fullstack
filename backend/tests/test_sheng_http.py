@@ -27,10 +27,10 @@ def test_sheng_rest_autoplay_four_players() -> None:
             "/api/sheng/tables/" + table_id,
             params={"token": tokens[str(actor_seat)]},
         ).json()
-        cid = int(st["legal_plays"][0]["cid"])  # type: ignore[index]
+        ids = st["legal_plays"][0]["card_ids"]  # type: ignore[index]
         resp = client.post(
             "/api/sheng/tables/" + table_id + "/actions",
-            json={"token": tokens[str(actor_seat)], "card_id": cid},
+            json={"token": tokens[str(actor_seat)], "card_ids": ids},
         )
         assert resp.status_code == 200, resp.text
         safety += 1

@@ -9,9 +9,9 @@ def test_running_hand_autoplay_four_players_to_scored() -> None:
     max_plays = 300
     while rh.phase != "scored":
         seat = rh._to_act()
-        opts = rh.legal_single_plays(seat)
+        opts = rh.legal_combo_plays(seat)
         assert opts, "no legal moves while hand not scored"
-        rh.play_single(seat, opts[0].cid)
+        rh.play_cards(seat, [c.cid for c in opts[0]])
         safety += 1
         assert safety < max_plays
     assert rh.result is not None

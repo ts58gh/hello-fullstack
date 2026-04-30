@@ -111,8 +111,8 @@
   let dealingInProgress = false;
   let dealAnimConsumedKey = '';
   let boardLayoutKey = '';
-  /** Hand card chosen for confirmation (click then 「出牌」). */
-  let selectedPlayCid = null;
+  /** Selected card cids (multiset) before confirming a legal combo. */
+  let selectedPlayIds = [];
   /** Trick history sidebar: default to last completed trick until user touches the dropdown. */
   let trickHistManual = false;
   /** New deal resets trickHistManual when epoch changes. */
@@ -213,6 +213,7 @@
     boardLayoutKey = '';
     trickHistManual = false;
     trickHistSyncedEpoch = null;
+    selectedPlayIds = [];
     if (board) board.innerHTML = '';
     if (myHandDock) myHandDock.innerHTML = '';
     if (trickHistorySelect) trickHistorySelect.innerHTML = '';
@@ -290,11 +291,12 @@
       const peer = await r.json();
       const legal = peer.legal_plays || [];
       if (!legal.length) return;
-      const cid = legal[0].cid;
+      const ids = legalOptionCardIds(legal[0]);
+      if (!ids.length) return;
       const r2 = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/actions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ token: tokenForSeat(actor), card_id: cid }),
+        body: JSON.stringify({ token: tokenForSeat(actor), card_ids: ids }),
       });
       const body = await r2.json().catch(() => null);
       if (r2.ok && body) {
@@ -364,7 +366,7 @@
         }
       }
       if (msg.type === 'error') {
-        selectedPlayCid = null;
+        selectedPlayIds = [];
         statusLine.textContent = '错误: ' + (msg.message || '');
         void fetchStateRest();
       }
@@ -477,6 +479,39 @@
     const r = np === 4 ? 36 : np === 6 ? 39 : 36;
     const deg = (90 + offset * (360 / np)) * (Math.PI / 180);
     return { x: 50 + r * Math.cos(deg), y: 50 + r * Math.sin(deg) };
+  }
+
+  /** @param {any} lp One entry from ``legal_plays`` */
+  function legalOptionCardIds(lp) {
+    if (!lp) return [];
+    if (Array.isArray(lp.card_ids) && lp.card_ids.length) return lp.card_ids.map((x) => Number(x));
+    if (Array.isArray(lp.cards) && lp.cards.length) return lp.cards.map((c) => Number(c.cid));
+    if (lp.card != null && lp.card.cid != null) return [Number(lp.card.cid)];
+    return [];
+  }
+
+  function unionLegalTouchIds(legalPlays) {
+    const s = new Set();
+    (legalPlays || []).forEach((lp) => legalOptionCardIds(lp).forEach((id) => s.add(id)));
+    return s;
+  }
+
+  function sortedIdKey(ids) {
+    return JSON.stringify(
+      [...ids]
+        .map(Number)
+        .sort((a, b) => a - b),
+    );
+  }
+
+  /** @returns {number[] | null} */
+  function findMatchingLegalCardIds(legalPlays, selectedIds) {
+    const want = sortedIdKey(selectedIds);
+    for (const lp of legalPlays || []) {
+      const ids = legalOptionCardIds(lp);
+      if (ids.length && sortedIdKey(ids) === want) return ids.map(Number);
+    }
+    return null;
   }
 
   function sortHandForReveal(cards) {
@@ -630,13 +665,19 @@
     plays.forEach((p) => {
       const seat = p.seat;
       const off = seatOffsetViewer(seat, viewerSeat, np);
+      const cards = p.cards && p.cards.length ? p.cards : p.card ? [p.card] : [];
       const wrap = document.createElement('div');
-      const cf = document.createElement('div');
-      cf.className = mini ? 'card-face card-face--sm' : 'card-face card-face--trick';
-      applyCardFace(cf, p.card);
-      wrap.appendChild(cf);
+      const stack = document.createElement('div');
+      stack.className = 'trick-cards-stack';
+      cards.forEach((card) => {
+        const cf = document.createElement('div');
+        cf.className = mini ? 'card-face card-face--sm' : 'card-face card-face--trick';
+        applyCardFace(cf, card);
+        stack.appendChild(cf);
+      });
+      wrap.appendChild(stack);
       const lb = document.createElement('div');
-      lb.textContent = '座' + seat;
+      lb.textContent = '座' + seat + (cards.length > 1 ? ` · ${cards.length}张` : '');
       if (mini) {
         const pos = trickMatPct(off, np);
         wrap.className = 'trick-mat-slot';
@@ -762,10 +803,29 @@
     paintTrickPlays(mini, tr.plays || [], st.viewer_seat, st.num_players, { winnerSeat: tr.winner_seat });
   }
 
-  function renderMyHand(st, myTurn, legalIds) {
+  /** @param {Record<number, number>} handCounts */
+  function pruneSelectedPlayIds(legalPlaysUnion, handCounts) {
+    const next = [];
+    const used = {};
+    for (const cidRaw of selectedPlayIds) {
+      const cid = Number(cidRaw);
+      if (!legalPlaysUnion.has(cid)) continue;
+      const cap = handCounts[cid] || 0;
+      used[cid] = (used[cid] || 0) + 1;
+      if (used[cid] <= cap) next.push(cid);
+    }
+    selectedPlayIds = next;
+  }
+
+  function renderMyHand(st, myTurn, legalPlays) {
     if (!myHandDock) return;
-    if (!myTurn) selectedPlayCid = null;
-    else if (selectedPlayCid != null && !legalIds.has(selectedPlayCid)) selectedPlayCid = null;
+    const legalUnion = unionLegalTouchIds(legalPlays);
+    const mine = (st.hands || [])[st.viewer_seat];
+    const handCounts = {};
+    if (Array.isArray(mine)) mine.forEach((c) => (handCounts[c.cid] = (handCounts[c.cid] || 0) + 1));
+
+    if (!myTurn) selectedPlayIds = [];
+    else pruneSelectedPlayIds(legalUnion, handCounts);
 
     const epochKey = `${st.table_id}:${st.deal_epoch ?? 0}`;
     const tricking =
@@ -775,7 +835,6 @@
       dealAnimConsumedKey = epochKey;
     }
 
-    const mine = (st.hands || [])[st.viewer_seat];
     myHandDock.innerHTML = '';
     const title = document.createElement('div');
     title.className = 'my-hand-title';
@@ -797,18 +856,36 @@
     bar.appendChild(hintSpan);
     myHandDock.appendChild(bar);
 
+    function applyHandSelectionHighlights() {
+      const need = {};
+      selectedPlayIds.forEach((id) => {
+        need[id] = (need[id] || 0) + 1;
+      });
+      const seen = {};
+      row.querySelectorAll('.card-face').forEach((x) => {
+        const id = Number(x.dataset.pickCid);
+        const n = need[id] || 0;
+        seen[id] = (seen[id] || 0) + 1;
+        x.classList.toggle('card-selected', n > 0 && seen[id] <= n);
+      });
+    }
+
     function updatePlayChrome() {
       const canAct = myTurn && !dealingInProgress;
-      btnPlay.disabled = !canAct || selectedPlayCid == null;
+      const matchIds = findMatchingLegalCardIds(legalPlays, selectedPlayIds);
+      btnPlay.disabled = !canAct || matchIds == null;
       if (!myTurn) hintSpan.textContent = '';
       else if (dealingInProgress) hintSpan.textContent = '发牌中，请稍候…';
-      else if (selectedPlayCid == null) hintSpan.textContent = '先点击一张合法牌选定，再点「出牌」';
-      else hintSpan.textContent = '已选定，点「出牌」提交；可再点其他牌改选';
+      else if (!selectedPlayIds.length) hintSpan.textContent = '点击手牌组成合法组合（单张/对子/三张/拖拉机），再点「出牌」';
+      else if (matchIds == null) hintSpan.textContent = '当前选牌不构成合法组合，请增删手牌或重选';
+      else hintSpan.textContent = `已匹配合法组合（${matchIds.length} 张），点「出牌」提交`;
     }
 
     btnPlay.addEventListener('click', () => {
-      if (dealingInProgress || selectedPlayCid == null || !myTurn) return;
-      playCard(selectedPlayCid);
+      if (dealingInProgress || !myTurn) return;
+      const matchIds = findMatchingLegalCardIds(legalPlays, selectedPlayIds);
+      if (!matchIds) return;
+      submitPlayCardIds(matchIds);
     });
 
     if (!Array.isArray(mine) || !mine.length) {
@@ -820,12 +897,18 @@
 
     function wirePick(el, c) {
       el.dataset.pickCid = String(c.cid);
-      if (!(myTurn && legalIds.has(c.cid))) return;
+      if (!(myTurn && legalUnion.has(c.cid))) return;
       el.addEventListener('click', () => {
         if (dealingInProgress) return;
-        selectedPlayCid = c.cid;
-        row.querySelectorAll('.card-face').forEach((x) => x.classList.remove('card-selected'));
-        el.classList.add('card-selected');
+        const cid = Number(c.cid);
+        const i = selectedPlayIds.indexOf(cid);
+        if (i >= 0) selectedPlayIds.splice(i, 1);
+        else {
+          const cur = selectedPlayIds.filter((x) => x === cid).length;
+          if (cur >= (handCounts[cid] || 0)) return;
+          selectedPlayIds.push(cid);
+        }
+        applyHandSelectionHighlights();
         updatePlayChrome();
       });
     }
@@ -838,11 +921,11 @@
       cancelDealAnimation();
       dealingInProgress = true;
       dealOverlay?.classList.remove('hidden');
-      selectedPlayCid = null;
+      selectedPlayIds = [];
       updatePlayChrome();
       sorted.forEach((c, i) => {
         const el = document.createElement('div');
-        el.className = 'card-face card-deal-pending' + (myTurn && legalIds.has(c.cid) ? ' playable' : ' dim');
+        el.className = 'card-face card-deal-pending' + (myTurn && legalUnion.has(c.cid) ? ' playable' : ' dim');
         applyCardFace(el, c);
         el.style.opacity = '0';
         el.title = (c.label || '') + ' · cid=' + c.cid;
@@ -864,13 +947,13 @@
     } else {
       sorted.forEach((c) => {
         const el = document.createElement('div');
-        el.className = 'card-face' + (myTurn && legalIds.has(c.cid) ? ' playable' : ' dim');
+        el.className = 'card-face' + (myTurn && legalUnion.has(c.cid) ? ' playable' : ' dim');
         applyCardFace(el, c);
         el.title = (c.label || '') + ' · cid=' + c.cid;
         wirePick(el, c);
-        if (selectedPlayCid != null && String(selectedPlayCid) === String(c.cid)) el.classList.add('card-selected');
         row.appendChild(el);
       });
+      applyHandSelectionHighlights();
       updatePlayChrome();
     }
   }
@@ -889,11 +972,10 @@
     updateSeatActingHighlight(st);
 
     const legal = st.legal_plays || [];
-    const legalIds = new Set(legal.map((x) => x.cid));
     const viewer = st.viewer_seat;
     const myTurn = st.phase === 'play' && st.to_act_seat === viewer;
 
-    renderMyHand(st, myTurn, legalIds);
+    renderMyHand(st, myTurn, legal);
 
     if (st.phase === 'scored') {
       btnNext.classList.remove('hidden');
@@ -914,8 +996,8 @@
         ? `轮到 座${st.to_act_seat} · 你在 座${viewer}` +
           (myTurn
             ? dealingInProgress
-              ? ' — 发牌后可选手牌，再点出牌'
-              : ' — 点选手牌后点「出牌」'
+              ? ' — 发牌后可选手牌组成合法组合，再点出牌'
+              : ' — 多点组成合法组合后点「出牌」'
             : dealingInProgress
               ? ' — 发牌中…'
               : ' — 等待')
@@ -933,30 +1015,33 @@
       .replace(/>/g, '&gt;');
   }
 
-  function playCard(cid) {
+  function submitPlayCardIds(cardIds) {
     if (dealingInProgress) return;
     const st = app.lastState;
     const v = st && typeof st.viewer_seat === 'number' ? st.viewer_seat : null;
     if (!st || st.phase !== 'play' || typeof st.to_act_seat !== 'number' || v === null || st.to_act_seat !== v) {
-      selectedPlayCid = null;
+      selectedPlayIds = [];
       statusLine.textContent = '出牌已过时（请先同步状态）…';
       void fetchStateRest();
       return;
     }
-    selectedPlayCid = null;
+    const ids = (cardIds || []).map((x) => Number(x)).filter((n) => !Number.isNaN(n));
+    if (!ids.length) return;
+    selectedPlayIds = [];
     if (app.ws && app.ws.readyState === 1) {
-      app.ws.send(JSON.stringify({ type: 'action', card_id: cid }));
+      app.ws.send(JSON.stringify({ type: 'action', card_ids: ids }));
       return;
     }
-    void postAction(cid);
+    void postAction(ids);
   }
 
-  async function postAction(cardId) {
+  async function postAction(cardIds) {
     if (!app.tableId) return;
+    const ids = Array.isArray(cardIds) ? cardIds : [cardIds];
     const r = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/actions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ token: tokenForSeat(app.seat), card_id: cardId }),
+      body: JSON.stringify({ token: tokenForSeat(app.seat), card_ids: ids }),
     });
     const body = await r.json().catch(() => null);
     if (r.ok && body && body.state) renderState(body.state);

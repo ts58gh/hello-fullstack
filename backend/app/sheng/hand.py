@@ -1,4 +1,4 @@
-"""Run one finished 升级 hand (phase-2 driver — **single-card tricks only**).
+"""Run one finished 升级 hand (multi-card combos: single / pair / triple / plain tractor).
 
 First trick opens **left of declarer / 庄家右手** — ``leader=(declarer+1)%n``;
 within the hand subsequent tricks open with the trick winner.
@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from .cards import PhysCard, Suit, build_shoe, deal, shoe_size_for_players
-from .follow import follow_candidates_single
+from .combo_legal import combo_trick_winner_seat, legal_plays_for_turn
 from .friend import FriendCall, FriendPlayTracker
 from .scoring import (
     defenders_threshold,
@@ -25,7 +25,7 @@ from .scoring import (
     point_value,
     points_in_cards,
 )
-from .trump import TrumpContext, compare_single_trick_winner
+from .trump import TrumpContext
 
 
 def teammate_seat(declarer_seat: int, num_players: int) -> int:
@@ -56,12 +56,12 @@ class HandResult:
 
 @dataclass(frozen=True)
 class CompletedTrickRecord:
-    """One finished trick (single-card pacing): plays in seat order starting with trick leader."""
+    """Finished trick — each seat contributes a bundle of PhysCards."""
 
     winner_seat: int
     trick_points: int
     defenders_gained: bool
-    plays: tuple[tuple[int, PhysCard], ...]
+    plays: tuple[tuple[int, tuple[PhysCard, ...]], ...]
 
 
 @dataclass
@@ -75,7 +75,7 @@ class RunningHand:
     kitty: list[PhysCard]
     trump: TrumpContext
     leader: int
-    current_trick: list[tuple[int, PhysCard]] = field(default_factory=list)
+    current_trick: list[tuple[int, tuple[PhysCard, ...]]] = field(default_factory=list)
     trick_index: int = 0
     friend_tracker: FriendPlayTracker | None = None
     friend_calls: tuple[FriendCall, ...] = ()
@@ -125,22 +125,23 @@ class RunningHand:
             friend_calls=fc_tuple,
         )
 
-    def _remove_card(self, seat: int, cid: int) -> PhysCard:
+    def _take_cards_ordered(self, seat: int, cid_order: list[int]) -> tuple[PhysCard, ...]:
+        if len(set(cid_order)) != len(cid_order):
+            raise ValueError("duplicate card id in play")
         hand = self.hands[seat]
-        for i, c in enumerate(hand):
-            if c.cid == cid:
-                return hand.pop(i)
-        raise ValueError("card not in hand")
+        drawn: list[PhysCard] = []
+        for cid in cid_order:
+            idx = next((i for i, c in enumerate(hand) if c.cid == cid), None)
+            if idx is None:
+                raise ValueError("card not in hand")
+            drawn.append(hand.pop(idx))
+        return tuple(drawn)
 
-    def legal_single_plays(self, seat: int) -> list[PhysCard]:
-        if self.phase != "play":
+    def legal_combo_plays(self, seat: int) -> list[list[PhysCard]]:
+        if self.phase != "play" or seat != self._to_act():
             return []
-        if seat != self._to_act():
-            return []
-        if not self.current_trick:
-            return list(self.hands[seat])
-        led = self.current_trick[0][1]
-        return follow_candidates_single(self.trump, led, self.hands[seat])
+        trick_view = [(s, tuple(cs)) for s, cs in self.current_trick]
+        return legal_plays_for_turn(self.trump, trick_view, self.hands[seat])
 
     def _attacker_seats_provisional(self) -> set[int]:
         """Current 庄方进攻席（6 人找朋友：庄 + 已揭牌朋友；否则对角）。"""
@@ -162,39 +163,44 @@ class RunningHand:
             return self.leader
         return (self.leader + len(self.current_trick)) % self.num_players
 
-    def play_single(self, seat: int, card_id: int) -> dict:
+    def play_cards(self, seat: int, card_ids: list[int]) -> dict:
         if self.phase != "play":
             raise ValueError("hand already scored")
         if seat != self._to_act():
             raise PermissionError("not your turn")
+        if not card_ids:
+            raise ValueError("no cards submitted")
 
-        legal = self.legal_single_plays(seat)
-        legal_ids = {c.cid for c in legal}
-        if card_id not in legal_ids:
-            raise ValueError("illegal card")
+        wanted = sorted(int(x) for x in card_ids)
+        trick_so_far = [(s, tuple(cs)) for s, cs in self.current_trick]
+        opts = legal_plays_for_turn(self.trump, trick_so_far, self.hands[seat])
+        wf = frozenset(wanted)
+        if wf not in {frozenset(c.cid for c in o) for o in opts}:
+            raise ValueError("illegal combo")
 
-        card = self._remove_card(seat, card_id)
+        played_bundle = self._take_cards_ordered(seat, wanted)
         events: list[dict] = []
-        self.current_trick.append((seat, card))
+        self.current_trick.append((seat, played_bundle))
 
         if self.friend_tracker:
-            for ev in self.friend_tracker.observe(seat, card):
-                self._revealed_friend_seats.add(ev.reveal_seat)
-                events.append({"type": "friend_reveal", "nth": ev.call.nth, "seat": ev.reveal_seat})
+            for card in played_bundle:
+                for ev in self.friend_tracker.observe(seat, card):
+                    self._revealed_friend_seats.add(ev.reveal_seat)
+                    events.append({"type": "friend_reveal", "nth": ev.call.nth, "seat": ev.reveal_seat})
 
         if len(self.current_trick) < self.num_players:
             return {"events": events}
 
-        winners = [(s, c) for s, c in self.current_trick]
-
-        ws = compare_single_trick_winner(self.trump, winners)
-        points_this_trick = sum(point_value(c) for _s, c in winners)
+        ws = combo_trick_winner_seat(self.trump, [(s, tuple(cs)) for s, cs in self.current_trick])
+        points_this_trick = sum(point_value(c) for _s, cs in self.current_trick for c in cs)
         atk_now = self._attacker_seats_provisional()
+        record_plays = tuple((s, tuple(cs)) for s, cs in self.current_trick)
+        defenders_gained = ws not in atk_now
         record = CompletedTrickRecord(
             winner_seat=ws,
             trick_points=points_this_trick,
-            defenders_gained=ws not in atk_now,
-            plays=tuple(self.current_trick),
+            defenders_gained=defenders_gained,
+            plays=record_plays,
         )
         self._completed_tricks.append(record)
 
@@ -203,7 +209,7 @@ class RunningHand:
                 "type": "trick_done",
                 "winner_seat": ws,
                 "trick_points": points_this_trick,
-                "defenders_gained_this_trick": record.defenders_gained,
+                "defenders_gained_this_trick": defenders_gained,
             }
         )
 
@@ -223,7 +229,9 @@ class RunningHand:
         trick_part = sum(r.trick_points for r in self._completed_tricks if r.winner_seat not in atk)
 
         kp = points_in_cards(self.kitty)
-        mult = kitty_multiplier_for_last_trick(num_cards_in_leading_combo=1)
+        last_trick = self._completed_tricks[-1]
+        lead_cards = last_trick.plays[0][1]
+        mult = kitty_multiplier_for_last_trick(num_cards_in_leading_combo=len(lead_cards))
         bonus_base = kp * mult
 
         kitty_bonus = 0

@@ -21,10 +21,10 @@ def _autoplay_until_scored(tab: str, toks: dict[str, str]) -> None:
             "/api/sheng/tables/" + tab,
             params={"token": toks[str(actor)]},
         ).json()
-        cid = int(st["legal_plays"][0]["cid"])  # type: ignore[index]
+        ids = list(st["legal_plays"][0]["card_ids"])  # type: ignore[index]
         resp = client.post(
             "/api/sheng/tables/" + tab + "/actions",
-            json={"token": toks[str(actor)], "card_id": cid},
+            json={"token": toks[str(actor)], "card_ids": ids},
         )
         assert resp.status_code == 200, resp.text
         safety += 1

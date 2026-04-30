@@ -45,7 +45,8 @@ class CreateTableResponse(BaseModel):
 
 class PlayBody(BaseModel):
     token: str = Field(..., min_length=4)
-    card_id: int
+    card_id: Optional[int] = None
+    card_ids: Optional[list[int]] = None
 
 
 class PlayResponse(BaseModel):
@@ -109,8 +110,13 @@ async def get_state(table_id: str, token: str = Query(..., min_length=4)) -> dic
 
 @router.post("/tables/{table_id}/actions", response_model=PlayResponse)
 async def post_play(table_id: str, body: PlayBody) -> PlayResponse:
+    ids = body.card_ids
+    if ids is None or len(ids) == 0:
+        if body.card_id is None:
+            raise HTTPException(status_code=400, detail="card_ids or card_id required") from None
+        ids = [body.card_id]
     try:
-        out = await tables.submit_play(table_id, body.token, body.card_id)
+        out = await tables.submit_play(table_id, body.token, [int(x) for x in ids])
         room = tables.get_room(table_id)
         seat = tables.find_seat_for_token(room, body.token)
     except KeyError:

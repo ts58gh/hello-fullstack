@@ -5,10 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from .cards import PhysCard
+from .combos import parse_combo
+
 from .friend import FriendCall
 from .hand import RunningHand
 from .scoring import defenders_threshold
 from .tables import ShengRoom
+from .trump import TrumpContext
 
 
 def _friend_call_pub(fc: FriendCall) -> dict[str, Any]:
@@ -23,6 +26,15 @@ def _serialize_card(c: PhysCard) -> dict[str, Any]:
     return payload
 
 
+def _legal_option_pub(ctx: TrumpContext, cards: list[PhysCard]) -> dict[str, Any]:
+    pb = parse_combo(ctx, list(cards))
+    return {
+        "combo_kind": pb.kind.value,
+        "card_ids": [c.cid for c in sorted(cards, key=lambda x: x.cid)],
+        "cards": [_serialize_card(c) for c in sorted(cards, key=lambda x: x.cid)],
+    }
+
+
 def _completed_tricks_public(rh: RunningHand) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for i, r in enumerate(rh._completed_tricks, start=1):
@@ -32,7 +44,13 @@ def _completed_tricks_public(rh: RunningHand) -> list[dict[str, Any]]:
                 "winner_seat": r.winner_seat,
                 "trick_points": r.trick_points,
                 "defenders_gained": r.defenders_gained,
-                "plays": [{"seat": s, "card": _serialize_card(c)} for s, c in r.plays],
+                "plays": [
+                    {
+                        "seat": s,
+                        "cards": [_serialize_card(c) for c in bundle],
+                    }
+                    for s, bundle in r.plays
+                ],
             }
         )
     return out
@@ -72,13 +90,12 @@ def view_for(room: ShengRoom, viewer: int) -> dict[str, Any]:
 
     # Cards played to the current trick are public to all watchers.
     current_trick = [
-        {"seat": s, "card": _serialize_card(c)}
-        for s, c in rh.current_trick
+        {"seat": s, "cards": [_serialize_card(c) for c in bunch]} for s, bunch in rh.current_trick
     ]
 
     legal: list[dict[str, Any]] = []
     if rh.phase == "play" and viewer == rh._to_act():
-        legal = [_serialize_card(c) for c in rh.legal_single_plays(viewer)]
+        legal = [_legal_option_pub(rh.trump, cards) for cards in rh.legal_combo_plays(viewer)]
 
     return {
         "table_id": room.id,

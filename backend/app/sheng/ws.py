@@ -132,11 +132,15 @@ async def _handle_message(
         return
     if mtype == "action":
         try:
-            cid = msg.get("card_id")
-            if cid is None:
-                raise ValueError("card_id required")
-            await sheng_tables.submit_play(table_id, token, int(cid))
-        except (ValueError, KeyError, PermissionError) as e:
+            raw_ids = msg.get("card_ids")
+            if isinstance(raw_ids, list) and raw_ids:
+                cids = [int(x) for x in raw_ids]
+            elif msg.get("card_id") is not None:
+                cids = [int(msg["card_id"])]
+            else:
+                raise ValueError("card_ids (non-empty) or card_id required")
+            await sheng_tables.submit_play(table_id, token, cids)
+        except (ValueError, KeyError, PermissionError, TypeError) as e:
             await ws.send_json({"type": "error", "message": str(e)})
         return
     if mtype == "next_hand":

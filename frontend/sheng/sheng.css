@@ -479,7 +479,28 @@ select {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 74px;
+  width: auto;
+  max-width: min(300px, 44vw);
+}
+/* Stacked combo (pair / tractor / triple) on the trick mat */
+.trick-cards-stack {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+}
+.trick-cards-stack .card-face {
+  flex-shrink: 0;
+}
+.trick-cards-stack .card-face--trick + .card-face--trick {
+  margin-left: -26px;
+}
+.trick-cards-stack .card-face--sm + .card-face--sm {
+  margin-left: -16px;
+}
+.trick-mat-slot .trick-cards-stack .card-face--sm + .card-face--sm {
+  margin-left: -14px;
 }
 .sb-trick-slot .card-face--trick {
   width: 70px;
@@ -509,7 +530,10 @@ select {
   top: 50%;
   transform: translateY(-50%);
 }
-.sb-trick-slot--win .card-face {
+.sb-trick-slot--win .card-face:not(:last-child) {
+  outline: none;
+}
+.sb-trick-slot--win .card-face:last-child {
   outline: 2px solid rgba(255, 215, 0, 0.9);
   box-shadow: 0 0 14px rgba(255, 215, 80, 0.48);
 }
@@ -571,10 +595,13 @@ select {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.74);
 }
-.trick-mat-slot .card-face {
+.trick-mat-slot .trick-cards-stack {
   margin: 0 auto;
 }
-.trick-mat-slot--win .card-face {
+.trick-mat-slot--win .card-face:not(:last-child) {
+  outline: none;
+}
+.trick-mat-slot--win .card-face:last-child {
   outline: 2px solid rgba(255, 215, 40, 0.95);
   box-shadow: 0 0 14px rgba(255, 215, 80, 0.45);
 }
