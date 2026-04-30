@@ -109,7 +109,7 @@ flowchart TB
 
 ---
 
-## Phase 2（HTTP + WebSocket，本目录进度）
+## Phase 2（HTTP + WebSocket）— 已完成
 
 | 条目 | 状态 |
 |------|------|
@@ -117,6 +117,7 @@ flowchart TB
 | `POST/GET /api/sheng/tables/*`、`actions`、`next_hand` | done |
 | `WS /api/sheng/tables/{id}/ws`，`action` / `next_hand` / `ping` | done |
 | `RunningHand` 首墩由庄家下家领出 | done |
-| 6 人 `friend_calls`（API + WS + `next_hand` 覆盖）；双友均揭牌且三席时终局 3v3 计分，否则对角 | done |
-| `frontend/sheng/` 试玩页（热座 + 其他座首张自动代出 + WS） | done |
+| 6 人 `friend_calls`（API + WS + `next_hand`，含 `friend_calls: []` 清对角）；双友均揭牌且三席时终局 3v3，否则对角 | done |
+| 状态 JSON：`revealed_friend_seats`（六人），供试玩进度展示 | done |
+| `frontend/sheng/` 试玩：热座、自动代首张、WS、六人找朋友表单（开局/下一副，`next_hand` 传数组或空） | done |
 | Phase 4：部署与联调 | 未开始 |

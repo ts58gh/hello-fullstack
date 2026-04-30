@@ -74,6 +74,12 @@ class RunningHand:
     phase: Literal["play", "scored"] = "play"
     result: HandResult | None = None
 
+    @property
+    def revealed_friend_seats(self) -> tuple[int, ...]:
+        """Seats that have been revealed as 朋友 (6 人找朋友)."""
+
+        return tuple(sorted(self._revealed_friend_seats))
+
     @classmethod
     def deal_new(
         cls,

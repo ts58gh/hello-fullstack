@@ -28,3 +28,13 @@ def test_attacker_seats_final_falls_back_when_only_one_friend_revealed() -> None
 def test_six_no_friend_calls_uses_diagonal() -> None:
     rh = RunningHand.deal_new(num_players=6, seed=1, declarer_seat=0, friend_calls=())
     assert rh._attacker_seats_final() == {0, 3}
+
+
+def test_revealed_friend_seats_sorted_public_property() -> None:
+    fc = (
+        FriendCall(1, Suit.SPADES, 14),
+        FriendCall(2, Suit.HEARTS, 13),
+    )
+    rh = RunningHand.deal_new(num_players=6, seed=1, declarer_seat=0, friend_calls=fc)
+    rh._revealed_friend_seats = {5, 1}
+    assert rh.revealed_friend_seats == (1, 5)

@@ -70,7 +70,7 @@
     return wsBaseFromApi() + relPathQuery;
   }
 
-  /** @type {{ tableId?: string; tokens?: Record<string,string>; seat?: number; np?: number; ws?: WebSocket | null }} */
+  /** @type {{ tableId?: string; tokens?: Record<string,string>; seat?: number; np?: number; ws?: WebSocket | null; lastState?: unknown }} */
   const app = {
     tableId: undefined,
     tokens: undefined,
@@ -95,6 +95,8 @@
   const btnNext = $('btnNext');
   const eventLog = $('eventLog');
   const chkAutoBot = $('chkAutoBot');
+  const chkFriendCalls = $('chkFriendCalls');
+  const friendSixSection = $('friendSixSection');
 
   let botBusy = false;
   apiPill.textContent = `API: ${API_BASE}`;
@@ -108,6 +110,20 @@
       sessionStorage.setItem(STORAGE_AUTOBOT, chkAutoBot.checked ? '1' : '0');
     } catch {}
   });
+  /** @returns {void} */
+  function syncFriendFieldsDisabled() {
+    const on = !!(chkFriendCalls && chkFriendCalls.checked);
+    for (let w = 1; w <= 2; w++) {
+      const ids = [`fc${w}_nth`, `fc${w}_suit`, `fc${w}_rank`];
+      ids.forEach((id) => {
+        const el = $(id);
+        if (el) el.disabled = !on;
+      });
+    }
+  }
+  chkFriendCalls?.addEventListener('change', syncFriendFieldsDisabled);
+  syncFriendFieldsDisabled();
+
   apiBaseInput.addEventListener('change', () => {
     const v = normalizeBaseUrl(apiBaseInput.value);
     if (v) {
@@ -172,6 +188,48 @@
     app.lastState = null;
     eventLog.textContent = '(无)';
     wsPill.textContent = 'WS: —';
+    $('friendSixSection')?.classList.add('hidden');
+  }
+
+  /** @returns {{ nth: number, suit: string, rank: number } | null} */
+  function parseFriendRow(which) {
+    const nth = parseInt($(`fc${which}_nth`).value, 10);
+    const suit = $(`fc${which}_suit`).value;
+    const rank = parseInt($(`fc${which}_rank`).value, 10);
+    if (!Number.isFinite(nth) || nth < 1) return null;
+    if (!['C', 'D', 'H', 'S'].includes(suit)) return null;
+    if (!Number.isFinite(rank) || rank < 2 || rank > 14) return null;
+    return { nth, suit, rank };
+  }
+
+  function currentMatchLevelRank() {
+    const st = app.lastState;
+    const lr = st && st.trump && st.trump.level_rank;
+    if (typeof lr === 'number' && lr >= 2 && lr <= 14) return lr;
+    return 5;
+  }
+
+  /**
+   * @param {number} matchLevelRank
+   * @param {'create' | 'next'} purpose
+   * @returns {{ ok: true, calls: any } | { ok: false, message: string }}
+   */
+  function validateSixFriendCalls(matchLevelRank, purpose) {
+    if (!chkFriendCalls || !chkFriendCalls.checked) {
+      return { ok: true, calls: purpose === 'next' ? [] : null };
+    }
+    const a = parseFriendRow(1);
+    const b = parseFriendRow(2);
+    if (!a || !b) {
+      return { ok: false, message: '朋友叫牌：请填写第几张与花色、点数' };
+    }
+    if (a.nth === b.nth && a.suit === b.suit && a.rank === b.rank) {
+      return { ok: false, message: '两张朋友叫牌不能完全相同' };
+    }
+    if (a.rank === matchLevelRank || b.rank === matchLevelRank) {
+      return { ok: false, message: `朋友牌点数不可等于当前级别（${matchLevelRank}）` };
+    }
+    return { ok: true, calls: [a, b] };
   }
 
   function tokenForSeat(s) {
@@ -287,13 +345,29 @@
     app.np = np;
 
     const tr = st.trump || {};
-    metaLine.textContent = [
+    const bits = [
       `阶段: ${st.phase}`,
       `庄家座位: ${st.declarer_seat}`,
       `首出/当前领出: ${st.leader}`,
       `主: ${tr.trump_suit || '?'} @${tr.level_rank}`,
       `台次: A${(st.teams && st.teams.A) || '?'} / B${(st.teams && st.teams.B) || '?'}`,
-    ].join(' · ');
+    ];
+    if (np === 6) {
+      const fc = st.friend_calls || [];
+      if (fc.length) {
+        bits.push(
+          '朋友: ' +
+            fc.map((c) => `第${c.nth}张${c.suit}${c.rank}`).join(' · ')
+        );
+      } else {
+        bits.push('朋友: 对角组队');
+      }
+      const rev = st.revealed_friend_seats || [];
+      if (rev.length) {
+        bits.push('已揭牌友: 座' + rev.join('、'));
+      }
+    }
+    metaLine.textContent = bits.join(' · ');
 
     trickArea.textContent = '';
     const trick = st.current_trick || [];
@@ -392,6 +466,11 @@
 
   async function createTable(numPlayers) {
     leaveTable();
+    if (numPlayers === 6) {
+      friendSixSection?.classList.remove('hidden');
+    } else {
+      friendSixSection?.classList.add('hidden');
+    }
     const seedRaw = seedIn.value.trim();
     const seed = seedRaw === '' ? null : parseInt(seedRaw, 10);
     const body = {
@@ -400,6 +479,15 @@
       match_level_rank: 5,
     };
     if (seed !== null && !Number.isNaN(seed)) body.seed = seed;
+
+    if (numPlayers === 6) {
+      const vr = validateSixFriendCalls(5, 'create');
+      if (!vr.ok) {
+        statusLine.textContent = vr.message || '朋友叫牌有误';
+        return;
+      }
+      if (vr.calls) body.friend_calls = vr.calls;
+    }
 
     const r = await fetch(`${API_BASE}/api/sheng/tables`, {
       method: 'POST',
@@ -424,10 +512,19 @@
 
   async function nextHand() {
     if (!app.tableId) return;
+    const body = { token: tokenForSeat(app.seat), seed: null };
+    if (app.np === 6) {
+      const vr = validateSixFriendCalls(currentMatchLevelRank(), 'next');
+      if (!vr.ok) {
+        statusLine.textContent = vr.message || '朋友叫牌有误';
+        return;
+      }
+      body.friend_calls = vr.calls;
+    }
     const r = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/next_hand`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ token: tokenForSeat(app.seat), seed: null }),
+      body: JSON.stringify(body),
     });
     const data = await r.json().catch(() => null);
     if (r.ok && data && data.state) {
@@ -446,6 +543,7 @@
   btnNext.addEventListener('click', () => void nextHand());
 
   if (loadSession() && app.tableId) {
+    if (app.np === 6) friendSixSection?.classList.remove('hidden');
     seatStrip.classList.remove('hidden');
     buildSeatStrip();
     connectWs();

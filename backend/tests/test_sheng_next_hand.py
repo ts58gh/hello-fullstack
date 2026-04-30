@@ -61,3 +61,34 @@ def test_two_rest_hands_via_next_hand() -> None:
     assert st["leader"] == (int(st["declarer_seat"]) + 1) % int(st["num_players"])
 
     _autoplay_until_scored(table_id, tokens)
+
+
+def test_next_hand_six_empty_friend_calls_stores_diagonal_mode() -> None:
+    """Explicit friend_calls: [] on next_hand clears two-card friend mode for the new deal."""
+    res = client.post(
+        "/api/sheng/tables",
+        json={
+            "num_players": 6,
+            "seed": 10101,
+            "friend_calls": [
+                {"nth": 1, "suit": "C", "rank": 9},
+                {"nth": 1, "suit": "D", "rank": 8},
+            ],
+        },
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    table_id = data["table_id"]
+    tokens = data["tokens"]
+    assert len(data["state_seat_0"]["friend_calls"]) == 2
+
+    _autoplay_until_scored(table_id, tokens)
+
+    r2 = client.post(
+        "/api/sheng/tables/" + table_id + "/next_hand",
+        json={"token": tokens["0"], "seed": 10102, "friend_calls": []},
+    )
+    assert r2.status_code == 200, r2.text
+    st = r2.json()["state"]
+    assert st["friend_calls"] == []
+    assert st["revealed_friend_seats"] == []

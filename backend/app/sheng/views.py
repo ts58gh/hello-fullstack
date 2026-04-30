@@ -64,6 +64,7 @@ def view_for(room: ShengRoom, viewer: int) -> dict[str, Any]:
         "declarer_seat": rh.declarer_seat,
         "bank_declarer_seat": room.bank_declarer_seat,
         "friend_calls": [_friend_call_pub(fc) for fc in room.friend_calls],
+        "revealed_friend_seats": list(rh.revealed_friend_seats) if rh.num_players == 6 else [],
         "trump": {
             "level_rank": rh.match_level_rank,
             "trump_suit": rh.trump_suit.value if rh.trump_suit else None,
