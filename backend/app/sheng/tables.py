@@ -56,7 +56,10 @@ def next_bank_declarer_seat(declarer_seat: int, num_players: int, lb: dict[str, 
 
 @dataclass
 class ShengRoom:
-    """One table running a :class:`RunningHand`; pair with :class:`ShengMatch` levels."""
+    """One table running a :class:`RunningHand`; pair with :class:`ShengMatch` levels.
+
+    ``deal_epoch`` bumps each new deal (for client pacing such as slow-deal animation).
+    """
 
     id: str
     num_players: int
@@ -65,6 +68,7 @@ class ShengRoom:
     hand: RunningHand
     bank_declarer_seat: int
     friend_calls: tuple[FriendCall, ...] = ()
+    deal_epoch: int = 1
 
 
 _TABLES: dict[str, ShengRoom] = {}
@@ -193,6 +197,7 @@ async def start_next_hand(
             friend_calls=fc_eff,
         )
         room.bank_declarer_seat = bank
+        room.deal_epoch += 1
     events = [{"type": "next_hand"}]
     await _broadcast(table_id, events)
     return {"events": events}

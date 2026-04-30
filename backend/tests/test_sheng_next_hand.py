@@ -59,6 +59,7 @@ def test_two_rest_hands_via_next_hand() -> None:
     st = r2.json()["state"]
     assert st["phase"] == "play"
     assert st["leader"] == (int(st["declarer_seat"]) + 1) % int(st["num_players"])
+    assert st.get("deal_epoch") == 2
 
     _autoplay_until_scored(table_id, tokens)
 

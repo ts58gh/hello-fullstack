@@ -119,17 +119,37 @@
         <span id="seatBtns"></span>
       </div>
 
-      <div class="felt">
-        <div class="row" style="justify-content: space-between; margin-bottom: 8px">
-          <div id="metaLine" style="font-size: 13px"></div>
-          <button type="button" class="btn hidden" id="btnNext">下一副</button>
+      <section id="tableSection" class="table-section hidden">
+        <div class="game-shell">
+          <div class="board-column">
+            <div id="dealOverlay" class="deal-overlay hidden">
+              <span>发牌中… 稍后可叫朋友牌 / 理牌</span>
+            </div>
+            <div id="metaBar" class="meta-bar"></div>
+            <div id="board" class="board"></div>
+            <div id="myHandDock" class="my-hand-dock"></div>
+            <div class="board-footer row">
+              <button type="button" class="btn primary hidden" id="btnNext">下一副</button>
+              <div id="statusLine" class="status-line"></div>
+            </div>
+            <div class="summary hidden" id="summaryBox"></div>
+          </div>
+          <aside class="side-panels">
+            <div class="panel">
+              <div class="panel-title">计分板</div>
+              <div id="scoreBoard"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">墩历史</div>
+              <label class="trick-hist-label">查阅 <select id="trickHistorySelect" aria-label="选择墩"></select></label>
+              <div id="trickHistoryView" class="trick-hist-body"></div>
+            </div>
+          </aside>
         </div>
-        <div class="trick" id="trickArea"></div>
-        <p class="hands-title">你当前视角的手牌</p>
-        <div class="card-row" id="handArea"></div>
-        <div class="statusline" id="statusLine"></div>
-        <div class="summary hidden" id="summaryBox"></div>
-      </div>
+      </section>
+
+      <div id="trickArea" class="hidden" aria-hidden="true"></div>
+      <div id="handArea" class="hidden" aria-hidden="true"></div>
 
       <div class="events">
         <span>最近事件 / 调试</span>

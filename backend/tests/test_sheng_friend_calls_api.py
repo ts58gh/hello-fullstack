@@ -48,6 +48,9 @@ def test_create_six_calls_and_view_lists_them() -> None:
     assert len(fc) == 2
     assert fc[0]["nth"] == 1 and fc[0]["rank"] == 14
     assert data["state_seat_0"]["revealed_friend_seats"] == []
+    assert data["state_seat_0"]["deal_epoch"] == 1
+    assert "completed_tricks" in data["state_seat_0"]
+    assert data["state_seat_0"]["completed_tricks"] == []
 
 
 def test_create_four_with_friend_calls_400() -> None:

@@ -6,6 +6,8 @@ from typing import Any
 
 from .cards import PhysCard
 from .friend import FriendCall
+from .hand import RunningHand
+from .scoring import defenders_threshold
 from .tables import ShengRoom
 
 
@@ -19,6 +21,25 @@ def _serialize_card(c: PhysCard) -> dict[str, Any]:
     payload: dict[str, Any] = dict(c.to_dict())
     payload["label"] = c.label()
     return payload
+
+
+def _completed_tricks_public(rh: RunningHand) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for i, r in enumerate(rh._completed_tricks, start=1):
+        out.append(
+            {
+                "index": i,
+                "winner_seat": r.winner_seat,
+                "trick_points": r.trick_points,
+                "defenders_gained": r.defenders_gained,
+                "plays": [{"seat": s, "card": _serialize_card(c)} for s, c in r.plays],
+            }
+        )
+    return out
+
+
+def _defender_trick_points_running(rh: RunningHand) -> int:
+    return sum(t.trick_points for t in rh._completed_tricks if t.defenders_gained)
 
 
 def serial_hands(room: ShengRoom, viewer: int) -> list[Any]:
@@ -84,4 +105,9 @@ def view_for(room: ShengRoom, viewer: int) -> dict[str, Any]:
         "hand_summary": summary,
         "legal_plays": legal,
         "to_act_seat": rh._to_act() if rh.phase == "play" else None,
+        "completed_tricks": _completed_tricks_public(rh),
+        "defender_trick_points_running": _defender_trick_points_running(rh),
+        "defenders_threshold": defenders_threshold(room.num_players),
+        "trick_index": rh.trick_index,
+        "deal_epoch": room.deal_epoch,
     }

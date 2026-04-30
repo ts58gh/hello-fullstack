@@ -54,6 +54,16 @@ class HandResult:
     declarer_seat: int
 
 
+@dataclass(frozen=True)
+class CompletedTrickRecord:
+    """One finished trick (single-card pacing): plays in seat order starting with trick leader."""
+
+    winner_seat: int
+    trick_points: int
+    defenders_gained: bool
+    plays: tuple[tuple[int, PhysCard], ...]
+
+
 @dataclass
 class RunningHand:
     num_players: int
@@ -69,7 +79,7 @@ class RunningHand:
     trick_index: int = 0
     friend_tracker: FriendPlayTracker | None = None
     friend_calls: tuple[FriendCall, ...] = ()
-    _trick_log: list[tuple[int, int]] = field(default_factory=list, repr=False)
+    _completed_tricks: list[CompletedTrickRecord] = field(default_factory=list, repr=False)
     _revealed_friend_seats: set[int] = field(default_factory=set, repr=False)
     phase: Literal["play", "scored"] = "play"
     result: HandResult | None = None
@@ -180,15 +190,20 @@ class RunningHand:
         ws = compare_single_trick_winner(self.trump, winners)
         points_this_trick = sum(point_value(c) for _s, c in winners)
         atk_now = self._attacker_seats_provisional()
-        self._trick_log.append((ws, points_this_trick))
-        defenders_gained = ws not in atk_now
+        record = CompletedTrickRecord(
+            winner_seat=ws,
+            trick_points=points_this_trick,
+            defenders_gained=ws not in atk_now,
+            plays=tuple(self.current_trick),
+        )
+        self._completed_tricks.append(record)
 
         events.append(
             {
                 "type": "trick_done",
                 "winner_seat": ws,
                 "trick_points": points_this_trick,
-                "defenders_gained_this_trick": defenders_gained,
+                "defenders_gained_this_trick": record.defenders_gained,
             }
         )
 
@@ -205,7 +220,7 @@ class RunningHand:
     def _finalize_scoring(self, last_trick_winner: int) -> None:
         th = defenders_threshold(self.num_players)
         atk = self._attacker_seats_final()
-        trick_part = sum(points for winner, points in self._trick_log if winner not in atk)
+        trick_part = sum(r.trick_points for r in self._completed_tricks if r.winner_seat not in atk)
 
         kp = points_in_cards(self.kitty)
         mult = kitty_multiplier_for_last_trick(num_cards_in_leading_combo=1)
