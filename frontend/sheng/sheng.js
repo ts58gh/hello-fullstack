@@ -619,6 +619,18 @@
     el.appendChild(handBox);
   }
 
+  let boardHeightPinned = false;
+  function boardHeightBounds() {
+    const min = 240;
+    const max = Math.max(min + 80, Math.min(window.innerHeight - 96, 1400));
+    return { min, max };
+  }
+
+  function clampBoardHeight(px) {
+    const { min, max } = boardHeightBounds();
+    return Math.round(Math.min(max, Math.max(min, px)));
+  }
+
   let boardFitRafQueued = false;
   /** 将整桌按比例缩放于 host 内，保证无滚动条、内容完整可见。 */
   function scheduleBoardFit() {
@@ -628,6 +640,20 @@
       boardFitRafQueued = false;
       syncBoardFitScale();
     });
+  }
+
+  function applyBoardHostHeight(px, opts) {
+    const host = boardResizeHost;
+    if (!host) return;
+    const persist = !!(opts && opts.persist);
+    const h = clampBoardHeight(px);
+    host.style.setProperty('--sheng-board-h', `${h}px`);
+    if (persist) {
+      boardHeightPinned = true;
+      try {
+        localStorage.setItem(STORAGE_BOARD_H, String(h));
+      } catch (_) {}
+    }
   }
 
   function syncBoardFitScale() {
@@ -641,7 +667,7 @@
     wrap.style.height = '';
 
     const hw = host.clientWidth;
-    const hh = host.clientHeight;
+    let hh = host.clientHeight;
     if (hw < 12 || hh < 12) return;
 
     let nw = panel.offsetWidth;
@@ -649,6 +675,16 @@
     if (nw < 12) nw = panel.scrollWidth;
     if (nh < 12) nh = panel.scrollHeight;
     if (nw < 8 || nh < 8) return;
+
+    // If the user hasn't pinned a height, prefer "full width" like the hand row:
+    // auto-adjust the host height so width-fit doesn't shrink horizontally.
+    if (!boardHeightPinned) {
+      const sw = Math.min(hw / nw, 1);
+      const idealH = nh * sw;
+      applyBoardHostHeight(idealH, { persist: false });
+      // Re-read host height after adjustment.
+      hh = host.clientHeight;
+    }
 
     let s = Math.min(hw / nw, hh / nh, 1);
     s = Math.max(0.08, Math.min(s, 1));
@@ -1247,17 +1283,6 @@
     const handle = boardResizeHandle;
     if (!host || !handle) return;
 
-    function bounds() {
-      const min = 240;
-      const max = Math.max(min + 80, Math.min(window.innerHeight - 96, 1200));
-      return { min, max };
-    }
-
-    function clampHeight(px) {
-      const { min, max } = bounds();
-      return Math.round(Math.min(max, Math.max(min, px)));
-    }
-
     function readSaved() {
       try {
         const v = parseInt(localStorage.getItem(STORAGE_BOARD_H), 10);
@@ -1267,16 +1292,11 @@
       }
     }
 
-    function applyHeight(px) {
-      const h = clampHeight(px);
-      host.style.setProperty('--sheng-board-h', `${h}px`);
-      try {
-        localStorage.setItem(STORAGE_BOARD_H, String(h));
-      } catch (_) {}
-    }
-
     const saved = readSaved();
-    if (saved != null) applyHeight(saved);
+    if (saved != null) {
+      boardHeightPinned = true;
+      applyBoardHostHeight(saved, { persist: true });
+    }
 
     let drag = false;
     let startY = 0;
@@ -1284,7 +1304,7 @@
 
     function onMove(e) {
       if (!drag) return;
-      applyHeight(startH + (e.clientY - startY));
+      applyBoardHostHeight(startH + (e.clientY - startY), { persist: true });
       e.preventDefault();
     }
 
@@ -1322,6 +1342,7 @@
       try {
         localStorage.removeItem(STORAGE_BOARD_H);
       } catch (_) {}
+      boardHeightPinned = false;
       scheduleBoardFit();
     });
 
@@ -1332,7 +1353,7 @@
       let base = parseInt(raw, 10);
       if (!Number.isFinite(base)) base = host.getBoundingClientRect().height;
       const delta = e.key === 'ArrowDown' ? 20 : -20;
-      applyHeight(base + delta);
+      applyBoardHostHeight(base + delta, { persist: true });
       scheduleBoardFit();
     });
 
@@ -1340,7 +1361,7 @@
       const prop = host.style.getPropertyValue('--sheng-board-h').trim();
       if (prop) {
         const cur = parseInt(prop, 10);
-        if (Number.isFinite(cur)) applyHeight(cur);
+        if (Number.isFinite(cur)) applyBoardHostHeight(cur, { persist: true });
       }
       scheduleBoardFit();
     });
