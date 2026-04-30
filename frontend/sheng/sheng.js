@@ -625,7 +625,8 @@
   let boardHeightPinned = false;
   function boardHeightBounds() {
     const min = 240;
-    const max = Math.max(min + 80, Math.min(window.innerHeight - 96, 1400));
+    // Looser cap so auto-fit can use full width (hw*nh/nw) without shrinking the green felt.
+    const max = Math.max(min + 80, Math.min(window.innerHeight - 40, 2000));
     return { min, max };
   }
 
@@ -1408,7 +1409,7 @@
         startX = e.clientX;
         const cur = gameShell?.style.getPropertyValue('--sheng-side-w').trim();
         startW = parseInt(cur, 10);
-        if (!Number.isFinite(startW)) startW = 236;
+        if (!Number.isFinite(startW)) startW = 188;
         document.body.classList.add('board-resize-dragging-x');
         try {
           boardResizeHandleX.setPointerCapture(e.pointerId);
@@ -1432,7 +1433,7 @@
         e.preventDefault();
         const raw = gameShell?.style.getPropertyValue('--sheng-side-w').trim();
         let base = parseInt(raw, 10);
-        if (!Number.isFinite(base)) base = 236;
+        if (!Number.isFinite(base)) base = 188;
         const delta = e.key === 'ArrowRight' ? 24 : -24;
         applySideW(base + delta, true);
         scheduleBoardFit();
