@@ -707,29 +707,30 @@
     if (nh < 12) nh = panel.scrollHeight;
     if (nw < 8 || nh < 8) return;
 
-    // Smart aspect ratio: when user hasn't pinned width/height, pick a host (w,h)
-    // that matches board natural ratio and fits the viewport, so the board stays full-width.
-    if (!boardWidthPinned || !boardHeightPinned) {
+    // Smart aspect ratio: only when user hasn't pinned either dimension.
+    // If the user pins width (horizontal drag) we keep height unchanged so the aspect ratio can change.
+    // If the user pins height (vertical drag) we keep width unchanged so the aspect ratio can change.
+    if (!boardWidthPinned && !boardHeightPinned) {
       const ratio = nh / nw;
       const wb = boardWidthBounds();
       const hb = boardHeightBounds();
 
-      let wantW = boardWidthPinned ? hw : wb.max;
-      let wantH = boardHeightPinned ? hh : wantW * ratio;
+      let wantW = wb.max;
+      let wantH = wantW * ratio;
 
-      if (!boardHeightPinned && wantH > hb.max) {
+      if (wantH > hb.max) {
         wantH = hb.max;
         wantW = wantH / ratio;
       }
-      if (!boardWidthPinned && wantW > wb.max) wantW = wb.max;
-      if (!boardWidthPinned && wantW < wb.min) wantW = wb.min;
-      if (!boardHeightPinned && wantH < hb.min) {
+      if (wantW > wb.max) wantW = wb.max;
+      if (wantW < wb.min) wantW = wb.min;
+      if (wantH < hb.min) {
         wantH = hb.min;
         wantW = wantH / ratio;
       }
 
-      if (!boardWidthPinned) applyBoardHostWidth(wantW, { persist: false });
-      if (!boardHeightPinned) applyBoardHostHeight(wantH, { persist: false });
+      applyBoardHostWidth(wantW, { persist: false });
+      applyBoardHostHeight(wantH, { persist: false });
 
       hw = host.clientWidth;
       hh = host.clientHeight;
