@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>升级 — 试玩</title>
-    <link rel="stylesheet" href="./sheng.css?v=board-resize" />
+    <link rel="stylesheet" href="./sheng.css?v=board-fit-noscroll" />
   </head>
   <body>
     <header class="topbar">
@@ -127,15 +127,19 @@
             </div>
             <div id="metaBar" class="meta-bar"></div>
             <div id="boardResizeHost" class="board-resize-host">
-              <div id="board" class="board sb-board"></div>
+              <div class="board-fit-viewport">
+                <div id="boardScaleWrap" class="board-scale-wrap">
+                  <div id="board" class="board sb-board"></div>
+                </div>
+              </div>
             </div>
             <div
               id="boardResizeHandle"
               class="board-resize-handle"
               role="separator"
               aria-orientation="horizontal"
-              aria-label="拖拽调整牌桌高度，双击恢复默认"
-              title="上下拖拽调整牌桌高度 · 双击恢复默认"
+              aria-label="拖拽调整牌桌区域高度；内容会整体缩放以完整显示"
+              title="上下拖拽调整牌桌区域高度 · 内容自动缩放以完整显示 · 双击恢复默认"
               tabindex="0"
             ></div>
             <div id="myHandDock" class="my-hand-dock"></div>
@@ -169,6 +173,6 @@
       </div>
     </main>
 
-    <script src="./sheng.js?v=board-resize"></script>
+    <script src="./sheng.js?v=board-fit-noscroll"></script>
   </body>
 </html>

@@ -93,6 +93,7 @@
   const tableSection = $('tableSection');
   const boardResizeHost = $('boardResizeHost');
   const boardResizeHandle = $('boardResizeHandle');
+  const boardScaleWrap = $('boardScaleWrap');
   const board = $('board');
   const metaBar = $('metaBar');
   const dealOverlay = $('dealOverlay');
@@ -617,6 +618,48 @@
     el.appendChild(handBox);
   }
 
+  let boardFitRafQueued = false;
+  /** 将整桌按比例缩放于 host 内，保证无滚动条、内容完整可见。 */
+  function scheduleBoardFit() {
+    if (boardFitRafQueued) return;
+    boardFitRafQueued = true;
+    requestAnimationFrame(() => {
+      boardFitRafQueued = false;
+      syncBoardFitScale();
+    });
+  }
+
+  function syncBoardFitScale() {
+    const host = boardResizeHost;
+    const wrap = boardScaleWrap;
+    const panel = board;
+    if (!host || !panel || !wrap) return;
+
+    panel.style.transform = '';
+    wrap.style.width = '';
+    wrap.style.height = '';
+
+    const hw = host.clientWidth;
+    const hh = host.clientHeight;
+    if (hw < 12 || hh < 12) return;
+
+    let nw = panel.offsetWidth;
+    let nh = panel.offsetHeight;
+    if (nw < 12) nw = panel.scrollWidth;
+    if (nh < 12) nh = panel.scrollHeight;
+    if (nw < 8 || nh < 8) return;
+
+    let s = Math.min(hw / nw, hh / nh, 1);
+    s = Math.max(0.08, Math.min(s, 1));
+
+    if (s >= 0.9995) return;
+
+    panel.style.transformOrigin = 'center center';
+    panel.style.transform = `scale(${s})`;
+    wrap.style.width = `${Math.ceil(nw * s)}px`;
+    wrap.style.height = `${Math.ceil(nh * s)}px`;
+  }
+
   function ensureBoardLayout(st) {
     if (!board) return null;
     const np = st.num_players || 4;
@@ -629,6 +672,7 @@
     let pm = board.querySelector('.trick-playmat');
     if (boardLayoutKey === key && pm) {
       updateSeatActingHighlight(st);
+      scheduleBoardFit();
       return pm;
     }
     boardLayoutKey = key;
@@ -695,6 +739,7 @@
     }
 
     updateSeatActingHighlight(st);
+    scheduleBoardFit();
     return pm;
   }
 
@@ -1034,6 +1079,7 @@
     fillScoreBoard(st);
     syncHistorySelect(st);
     paintTrickPlays(playmat, st.current_trick || [], st.viewer_seat, np, {});
+    scheduleBoardFit();
     updateSeatActingHighlight(st);
 
     const legal = st.legal_plays || [];
@@ -1274,6 +1320,7 @@
       try {
         localStorage.removeItem(STORAGE_BOARD_H);
       } catch (_) {}
+      scheduleBoardFit();
     });
 
     handle.addEventListener('keydown', (e) => {
@@ -1284,14 +1331,24 @@
       if (!Number.isFinite(base)) base = host.getBoundingClientRect().height;
       const delta = e.key === 'ArrowDown' ? 20 : -20;
       applyHeight(base + delta);
+      scheduleBoardFit();
     });
 
     window.addEventListener('resize', () => {
       const prop = host.style.getPropertyValue('--sheng-board-h').trim();
-      if (!prop) return;
-      const cur = parseInt(prop, 10);
-      if (Number.isFinite(cur)) applyHeight(cur);
+      if (prop) {
+        const cur = parseInt(prop, 10);
+        if (Number.isFinite(cur)) applyHeight(cur);
+      }
+      scheduleBoardFit();
     });
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => scheduleBoardFit());
+      ro.observe(host);
+      if (board) ro.observe(board);
+    }
+    scheduleBoardFit();
   }
 
   initBoardResize();
