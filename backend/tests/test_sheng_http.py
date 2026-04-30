@@ -36,3 +36,14 @@ def test_sheng_rest_autoplay_four_players() -> None:
         safety += 1
 
     raise AssertionError("hand did not finish")
+
+
+def test_view_card_objects_include_graphical_fields() -> None:
+    r = client.post("/api/sheng/tables", json={"num_players": 4, "seed": 42})
+    assert r.status_code == 200, r.text
+    st = r.json()["state_seat_0"]
+    c0 = st["hands"][0][0]
+    assert c0.get("kind") == "regular"
+    assert c0.get("suit") in ("C", "D", "H", "S")
+    assert isinstance(c0.get("rank"), int)
+    assert "label" in c0

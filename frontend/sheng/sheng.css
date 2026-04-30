@@ -178,7 +178,10 @@ select {
   gap: 6px;
 }
 .card-face {
+  position: relative;
+  flex-shrink: 0;
   min-width: 52px;
+  width: 52px;
   height: 72px;
   border-radius: 8px;
   background: var(--card-w);
@@ -187,12 +190,96 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: 'Segoe UI', 'Noto Sans', 'Arial Unicode MS', 'Apple Color Emoji', sans-serif;
   font-size: 13px;
   font-weight: 700;
   cursor: default;
   user-select: none;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
+.card-face--graphic {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+.card-corner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1;
+}
+.card-corner--tl {
+  position: absolute;
+  top: 5px;
+  left: 6px;
+}
+.card-corner--br {
+  position: absolute;
+  bottom: 5px;
+  right: 6px;
+  transform: rotate(180deg);
+}
+.card-rank {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.card-suit-micro {
+  font-size: 11px;
+  line-height: 1;
+}
+.card-suit-center {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -52%);
+  font-size: 30px;
+  line-height: 1;
+  opacity: 0.9;
+  pointer-events: none;
+}
+.card-suit-H,
+.card-suit-D {
+  color: #ba1818;
+}
+.card-suit-C,
+.card-suit-S {
+  color: #141414;
+}
+
+.card-joker {
+  background: linear-gradient(155deg, #3d2d5c 0%, #1a1224 48%, #0d0a12 100%);
+  color: #f0e6c8;
+  border-color: rgba(212, 175, 55, 0.42);
+}
+.card-joker-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 3px;
+  padding: 4px;
+}
+.card-joker-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+.card-joker-en {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  opacity: 0.88;
+}
+.card-joker-big .card-joker-title {
+  color: #ffd966;
+}
+.card-joker-small .card-joker-title {
+  color: #c9b896;
+}
+
 .card-face.playable {
   cursor: pointer;
   outline: 2px solid var(--accent);

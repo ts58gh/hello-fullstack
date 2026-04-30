@@ -339,6 +339,88 @@
     renderState(st);
   }
 
+  const SUIT_GLYPH = { C: '\u2663', D: '\u2666', H: '\u2665', S: '\u2660' };
+
+  function rankShort(rank) {
+    if (rank === 14) return 'A';
+    if (rank === 13) return 'K';
+    if (rank === 12) return 'Q';
+    if (rank === 11) return 'J';
+    if (rank === 10) return '10';
+    return String(rank);
+  }
+
+  /**
+   * @param {HTMLElement} el
+   * @param {any} card
+   */
+  function applyCardFace(el, card) {
+    el.textContent = '';
+    el.classList.remove(
+      'card-face--graphic',
+      'card-suit-C',
+      'card-suit-D',
+      'card-suit-H',
+      'card-suit-S',
+      'card-joker',
+      'card-joker-big',
+      'card-joker-small'
+    );
+
+    if (!card) {
+      el.textContent = '?';
+      return;
+    }
+
+    const k = card.kind;
+    if (k === 'bj' || k === 'sj') {
+      el.classList.add('card-face--graphic', 'card-joker', k === 'bj' ? 'card-joker-big' : 'card-joker-small');
+      const inner = document.createElement('div');
+      inner.className = 'card-joker-inner';
+      const t1 = document.createElement('span');
+      t1.className = 'card-joker-title';
+      t1.textContent = k === 'bj' ? '大王' : '小王';
+      const t2 = document.createElement('span');
+      t2.className = 'card-joker-en';
+      t2.textContent = 'JOKER';
+      inner.appendChild(t1);
+      inner.appendChild(t2);
+      el.appendChild(inner);
+      return;
+    }
+
+    if (k === 'regular' && card.suit && card.rank != null) {
+      const suit = String(card.suit);
+      const g = SUIT_GLYPH[suit] || suit;
+      const rt = rankShort(Number(card.rank));
+      el.classList.add('card-face--graphic', 'card-suit-' + suit);
+
+      function corner(mod) {
+        const d = document.createElement('div');
+        d.className = 'card-corner card-corner--' + mod;
+        const r = document.createElement('span');
+        r.className = 'card-rank';
+        r.textContent = rt;
+        const s = document.createElement('span');
+        s.className = 'card-suit-micro';
+        s.textContent = g;
+        d.appendChild(r);
+        d.appendChild(s);
+        return d;
+      }
+
+      el.appendChild(corner('tl'));
+      const cen = document.createElement('div');
+      cen.className = 'card-suit-center';
+      cen.textContent = g;
+      el.appendChild(cen);
+      el.appendChild(corner('br'));
+      return;
+    }
+
+    el.textContent = card.label != null ? String(card.label) : String(card.cid);
+  }
+
   function renderState(st) {
     app.lastState = st;
     const np = st.num_players || app.np;
@@ -376,7 +458,7 @@
       wrap.className = 'trick-slot';
       const cf = document.createElement('div');
       cf.className = 'card-face';
-      cf.textContent = (t.card && t.card.label) || '?';
+      applyCardFace(cf, t.card);
       const cap = document.createElement('div');
       cap.textContent = '座' + t.seat;
       wrap.appendChild(cf);
@@ -403,8 +485,8 @@
       for (const c of mine) {
         const el = document.createElement('div');
         el.className = 'card-face' + (myTurn && legalIds.has(c.cid) ? ' playable' : ' dim');
-        el.textContent = c.label || String(c.cid);
-        el.title = 'cid=' + c.cid;
+        applyCardFace(el, c);
+        el.title = (c.label || '') + ' · cid=' + c.cid;
         if (myTurn && legalIds.has(c.cid)) {
           el.addEventListener('click', () => playCard(c.cid));
         }

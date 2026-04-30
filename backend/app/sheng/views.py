@@ -14,7 +14,11 @@ def _friend_call_pub(fc: FriendCall) -> dict[str, Any]:
 
 
 def _serialize_card(c: PhysCard) -> dict[str, Any]:
-    return {"cid": c.cid, "label": c.label()}
+    """Include ``suit`` / ``rank`` / ``kind`` for graphical card faces on the client."""
+
+    payload: dict[str, Any] = dict(c.to_dict())
+    payload["label"] = c.label()
+    return payload
 
 
 def serial_hands(room: ShengRoom, viewer: int) -> list[Any]:
@@ -53,7 +57,7 @@ def view_for(room: ShengRoom, viewer: int) -> dict[str, Any]:
 
     legal: list[dict[str, Any]] = []
     if rh.phase == "play" and viewer == rh._to_act():
-        legal = [{"cid": c.cid, "label": c.label()} for c in rh.legal_single_plays(viewer)]
+        legal = [_serialize_card(c) for c in rh.legal_single_plays(viewer)]
 
     return {
         "table_id": room.id,
