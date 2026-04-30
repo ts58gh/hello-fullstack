@@ -290,7 +290,10 @@
         body: JSON.stringify({ token: tokenForSeat(actor), card_id: cid }),
       });
       const body = await r2.json().catch(() => null);
-      if (r2.ok && body && body.state) renderState(body.state);
+      if (r2.ok && body) {
+        /* Do not render(body.state): it is viewer=actor snapshot and desyncs our active seat WS view. */
+        await fetchStateRest();
+      }
     } catch (_) {
       /* ignore */
     } finally {
@@ -354,7 +357,9 @@
         }
       }
       if (msg.type === 'error') {
+        selectedPlayCid = null;
         statusLine.textContent = '错误: ' + (msg.message || '');
+        void fetchStateRest();
       }
     });
   }
@@ -911,6 +916,15 @@
 
   function playCard(cid) {
     if (dealingInProgress) return;
+    const st = app.lastState;
+    const v = st && typeof st.viewer_seat === 'number' ? st.viewer_seat : null;
+    if (!st || st.phase !== 'play' || typeof st.to_act_seat !== 'number' || v === null || st.to_act_seat !== v) {
+      selectedPlayCid = null;
+      statusLine.textContent = '出牌已过时（请先同步状态）…';
+      void fetchStateRest();
+      return;
+    }
+    selectedPlayCid = null;
     if (app.ws && app.ws.readyState === 1) {
       app.ws.send(JSON.stringify({ type: 'action', card_id: cid }));
       return;
