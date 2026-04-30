@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>升级 — 试玩</title>
-        <link rel="stylesheet" href="./sheng.css?v=turnfix" />
+    <link rel="stylesheet" href="./sheng.css?v=autobot-dflt" />
   </head>
   <body>
     <header class="topbar">
@@ -33,7 +33,7 @@
     <main>
       <p class="hint-line" style="margin: 0 0 12px; font-size: 13px; color: var(--muted, #8a9e8f)">
         <strong style="color: var(--fg, inherit)">在线试玩：</strong>
-        GitHub Pages 打开本页时，会自动连接公共演示后端 Render（见上方 API）。勾选「其他座位自动出牌」后可单手试玩。若你连不上，可把 API 改成你自己的后端地址；自建部署时须在 Render 上设置
+        GitHub Pages 打开本页时，会自动连接公共演示后端 Render（见上方 API）。<strong>默认不会</strong>替其他座位出牌；若只有您一人、希望桌内其他家自动跟出首张合法牌，请在下栏<strong>勾选「其他座位代出…」</strong>。若你连不上，可把 API 改成你自己的后端地址；自建部署时须在 Render 上设置
         <code>CORS_ALLOW_ORIGINS=https://你的用户名.github.io</code>
         （与仓库 Pages 所用域名一致）。
       </p>
@@ -45,8 +45,8 @@
         /></label>
         <button type="button" class="btn ghost" id="btnLeave">离开本桌</button>
         <label class="row" style="gap: 6px; align-items: center">
-          <input type="checkbox" id="chkAutoBot" checked />
-          <span style="font-size: 13px">其他座位代出首张合法牌（单手试玩）</span>
+          <input type="checkbox" id="chkAutoBot" />
+          <span style="font-size: 13px">轮到其他座位时自动代出首张合法牌（单手试玩；默认关闭）</span>
         </label>
       </section>
 
@@ -157,6 +157,6 @@
       </div>
     </main>
 
-        <script src="./sheng.js?v=turnfix"></script>
+    <script src="./sheng.js?v=autobot-dflt"></script>
   </body>
 </html>

@@ -119,6 +119,7 @@
   try {
     const vb = sessionStorage.getItem(STORAGE_AUTOBOT);
     if (chkAutoBot && vb === '0') chkAutoBot.checked = false;
+    else if (chkAutoBot && vb === '1') chkAutoBot.checked = true;
   } catch {}
   chkAutoBot?.addEventListener('change', () => {
     try {
