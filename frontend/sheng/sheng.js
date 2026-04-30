@@ -3,7 +3,7 @@
   const STORAGE_API = 'hello_fullstack_api_base';
   const STORAGE_AUTOBOT = 'hello_fullstack_sheng_autobot_other';
   const STORAGE_BOARD_H = 'hello_fullstack_sheng_board_height_v1';
-  const STORAGE_BOARD_W = 'hello_fullstack_sheng_board_width_v1';
+  const STORAGE_SIDE_W = 'hello_fullstack_sheng_side_width_v1';
 
   function normalizeBaseUrl(x) {
     return String(x || '')
@@ -623,29 +623,14 @@
   }
 
   let boardHeightPinned = false;
-  let boardWidthPinned = false;
   function boardHeightBounds() {
     const min = 240;
     const max = Math.max(min + 80, Math.min(window.innerHeight - 96, 1400));
     return { min, max };
   }
 
-  function boardWidthBounds() {
-    const fr = boardResizeFrame;
-    const cw = fr ? fr.getBoundingClientRect().width : window.innerWidth;
-    const min = 420;
-    // Max should track viewport/container; avoid hard cap so ultrawide can expand.
-    const max = Math.max(min + 80, cw - 30);
-    return { min, max };
-  }
-
   function clampBoardHeight(px) {
     const { min, max } = boardHeightBounds();
-    return Math.round(Math.min(max, Math.max(min, px)));
-  }
-
-  function clampBoardWidth(px) {
-    const { min, max } = boardWidthBounds();
     return Math.round(Math.min(max, Math.max(min, px)));
   }
 
@@ -674,20 +659,6 @@
     }
   }
 
-  function applyBoardHostWidth(px, opts) {
-    const host = boardResizeHost;
-    if (!host) return;
-    const persist = !!(opts && opts.persist);
-    const w = clampBoardWidth(px);
-    host.style.setProperty('--sheng-board-w', `${w}px`);
-    if (persist) {
-      boardWidthPinned = true;
-      try {
-        localStorage.setItem(STORAGE_BOARD_W, String(w));
-      } catch (_) {}
-    }
-  }
-
   function syncBoardFitScale() {
     const host = boardResizeHost;
     const wrap = boardScaleWrap;
@@ -708,32 +679,15 @@
     if (nh < 12) nh = panel.scrollHeight;
     if (nw < 8 || nh < 8) return;
 
-    // Smart aspect ratio: only when user hasn't pinned either dimension.
-    // If the user pins width (horizontal drag) we keep height unchanged so the aspect ratio can change.
-    // If the user pins height (vertical drag) we keep width unchanged so the aspect ratio can change.
-    if (!boardWidthPinned && !boardHeightPinned) {
+    // Smart aspect ratio: only auto-adjust height (board is always hand-width).
+    if (!boardHeightPinned) {
       const ratio = nh / nw;
-      const wb = boardWidthBounds();
       const hb = boardHeightBounds();
-
-      let wantW = wb.max;
-      let wantH = wantW * ratio;
-
-      if (wantH > hb.max) {
-        wantH = hb.max;
-        wantW = wantH / ratio;
-      }
-      if (wantW > wb.max) wantW = wb.max;
-      if (wantW < wb.min) wantW = wb.min;
-      if (wantH < hb.min) {
-        wantH = hb.min;
-        wantW = wantH / ratio;
-      }
-
-      applyBoardHostWidth(wantW, { persist: false });
+      // Fill width first (host width), then compute ideal height.
+      let wantH = hw * ratio;
+      if (wantH > hb.max) wantH = hb.max;
+      if (wantH < hb.min) wantH = hb.min;
       applyBoardHostHeight(wantH, { persist: false });
-
-      hw = host.clientWidth;
       hh = host.clientHeight;
     }
 
@@ -1350,24 +1304,37 @@
     }
 
     // Width resize (does not affect height).
-    function readSavedW() {
+    function readSavedSideW() {
       try {
-        const v = parseInt(localStorage.getItem(STORAGE_BOARD_W), 10);
+        const v = parseInt(localStorage.getItem(STORAGE_SIDE_W), 10);
         return Number.isFinite(v) ? v : null;
       } catch {
         return null;
       }
     }
 
-    function applyWidth(px, persist) {
-      applyBoardHostWidth(px, { persist });
+    function clampSideW(px) {
+      const shell = gameShell;
+      const full = shell ? shell.getBoundingClientRect().width : window.innerWidth;
+      const min = 180;
+      const max = Math.max(min + 60, Math.min(full * 0.46, 420));
+      return Math.round(Math.min(max, Math.max(min, px)));
     }
 
-    const savedW = readSavedW();
-    if (savedW != null) {
-      boardWidthPinned = true;
-      applyWidth(savedW, true);
+    function applySideW(px, persist) {
+      const shell = gameShell;
+      if (!shell) return;
+      const w = clampSideW(px);
+      shell.style.setProperty('--sheng-side-w', `${w}px`);
+      if (persist) {
+        try {
+          localStorage.setItem(STORAGE_SIDE_W, String(w));
+        } catch (_) {}
+      }
     }
+
+    const savedSideW = readSavedSideW();
+    if (savedSideW != null) applySideW(savedSideW, true);
 
     let drag = false;
     let startY = 0;
@@ -1416,7 +1383,7 @@
 
       function onMoveX(e) {
         if (!dragX) return;
-        applyWidth(startW + (e.clientX - startX), true);
+        applySideW(startW + (e.clientX - startX), true);
         scheduleBoardFit();
         e.preventDefault();
       }
@@ -1438,11 +1405,10 @@
       boardResizeHandleX.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return;
         dragX = true;
-        // Requirement: horizontal drag changes width only; lock current height from auto-fit.
-        // (User can still change height later via the vertical handle.)
-        boardHeightPinned = true;
         startX = e.clientX;
-        startW = host.getBoundingClientRect().width;
+        const cur = gameShell?.style.getPropertyValue('--sheng-side-w').trim();
+        startW = parseInt(cur, 10);
+        if (!Number.isFinite(startW)) startW = 236;
         document.body.classList.add('board-resize-dragging-x');
         try {
           boardResizeHandleX.setPointerCapture(e.pointerId);
@@ -1454,25 +1420,21 @@
       });
 
       boardResizeHandleX.addEventListener('dblclick', () => {
-        host.style.removeProperty('--sheng-board-w');
+        gameShell?.style.removeProperty('--sheng-side-w');
         try {
-          localStorage.removeItem(STORAGE_BOARD_W);
+          localStorage.removeItem(STORAGE_SIDE_W);
         } catch (_) {}
-        boardWidthPinned = false;
-        // If user only pinned width before, allow smart auto-fit again.
-        // (If height was explicitly pinned via vertical handle, it remains pinned.)
-        if (!localStorage.getItem(STORAGE_BOARD_H)) boardHeightPinned = false;
         scheduleBoardFit();
       });
 
       boardResizeHandleX.addEventListener('keydown', (e) => {
         if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
         e.preventDefault();
-        const raw = host.style.getPropertyValue('--sheng-board-w').trim();
+        const raw = gameShell?.style.getPropertyValue('--sheng-side-w').trim();
         let base = parseInt(raw, 10);
-        if (!Number.isFinite(base)) base = host.getBoundingClientRect().width;
+        if (!Number.isFinite(base)) base = 236;
         const delta = e.key === 'ArrowRight' ? 24 : -24;
-        applyWidth(base + delta, true);
+        applySideW(base + delta, true);
         scheduleBoardFit();
       });
     }

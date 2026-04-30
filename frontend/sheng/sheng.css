@@ -308,7 +308,7 @@ select {
 
 .game-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(192px, 236px);
+  grid-template-columns: minmax(0, 1fr) var(--sheng-side-w, 236px);
   gap: 12px 14px;
   padding: 0 6px 12px;
   align-items: start;
@@ -351,8 +351,7 @@ select {
 
 .board-resize-host {
   position: relative;
-  width: var(--sheng-board-w, 100%);
-  max-width: 100%;
+  width: 100%;
   height: var(--sheng-board-h, clamp(420px, 48vh, 660px));
   min-height: 240px;
   min-width: 360px;
@@ -364,11 +363,11 @@ select {
 }
 
 .board-resize-handle-x {
-  flex: 0 0 14px;
-  width: 14px;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  flex: 0 0 18px;
+  width: 18px;
+  border-radius: 10px;
+  background: rgba(212, 175, 55, 0.18);
+  border: 1px solid rgba(212, 175, 55, 0.42);
   cursor: ew-resize;
   touch-action: none;
   display: flex;
@@ -378,15 +377,16 @@ select {
 }
 .board-resize-handle-x:hover,
 .board-resize-handle-x:focus-visible {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(212, 175, 55, 0.28);
   outline: none;
+  box-shadow: 0 0 18px rgba(212, 175, 55, 0.22);
 }
 .board-resize-handle-x::after {
   content: '';
-  width: 3px;
-  height: 40px;
+  width: 4px;
+  height: 56px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .board-fit-viewport {
