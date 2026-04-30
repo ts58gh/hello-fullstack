@@ -76,7 +76,7 @@ body {
 main {
   max-width: min(2160px, 100vw - 6px);
   margin: 0 auto;
-  padding: 10px;
+  padding: 10px 6px;
 }
 
 .toolbar {
@@ -308,9 +308,9 @@ select {
 
 .game-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--sheng-side-w, 188px);
-  gap: 12px 14px;
-  padding: 0 6px 12px;
+  grid-template-columns: minmax(0, 1fr) var(--sheng-side-w, 168px);
+  gap: 12px 10px;
+  padding: 0 4px 12px;
   align-items: start;
 }
 
@@ -344,19 +344,21 @@ select {
 .board-resize-frame {
   display: flex;
   align-items: stretch;
-  justify-content: center;
+  justify-content: flex-start;
   width: 100%;
-  gap: 10px;
+  gap: 6px;
 }
 
 .board-resize-host {
   position: relative;
-  width: 100%;
+  flex: 1 1 0%;
+  width: auto;
+  min-width: min(360px, 100%);
   height: var(--sheng-board-h, clamp(420px, 48vh, 660px));
   min-height: 240px;
-  min-width: 360px;
-  max-height: min(1200px, calc(100vh - 100px));
-  max-height: min(1200px, calc(100dvh - 100px));
+  /* Must stay in sync with boardHeightBounds() in sheng.js (do not hard-cap lower than JS). */
+  max-height: min(2200px, calc(100vh - 20px));
+  max-height: min(2200px, calc(100dvh - 20px));
   overflow: hidden;
   border-radius: 16px;
   box-sizing: border-box;
@@ -474,7 +476,7 @@ body.board-resize-dragging-x {
     '. n .'
     'w c e'
     '. s .';
-  grid-template-columns: minmax(104px, 8.5vw) minmax(300px, 1fr) minmax(104px, 8.5vw);
+  grid-template-columns: minmax(56px, 3.75vw) minmax(168px, 1fr) minmax(56px, 3.75vw);
   grid-template-rows: auto minmax(368px, 1fr) auto;
   gap: 12px 12px;
 }
@@ -583,12 +585,12 @@ body.board-resize-dragging-x {
 .sb-trick-playmat.trick-playmat:not(.trick-playmat--mini) {
   position: relative;
   width: 100%;
-  max-width: min(1320px, 100%);
-  min-width: min(520px, 100%);
-  height: clamp(416px, 51vh, 656px);
+  max-width: none;
+  min-width: 0;
+  height: clamp(392px, 48vh, 720px);
   max-height: none;
-  margin: 0 auto;
-  align-self: center;
+  margin: 0;
+  align-self: stretch;
   flex-shrink: 0;
 }
 
