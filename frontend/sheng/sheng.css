@@ -600,6 +600,29 @@ select {
   min-height: 88px;
 }
 
+.my-play-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.my-play-bar .btn:disabled {
+  opacity: 0.45;
+}
+.play-hint {
+  flex: 1 1 200px;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.card-face.card-selected {
+  outline: 2px solid var(--accent);
+  box-shadow: 0 0 14px rgba(212, 175, 55, 0.42);
+  transform: translateY(-5px);
+}
+
 .side-panels {
   display: flex;
   flex-direction: column;

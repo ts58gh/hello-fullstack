@@ -111,6 +111,8 @@
   let dealingInProgress = false;
   let dealAnimConsumedKey = '';
   let boardLayoutKey = '';
+  /** Hand card chosen for confirmation (click then 「出牌」). */
+  let selectedPlayCid = null;
 
   apiPill.textContent = `API: ${API_BASE}`;
   apiBaseInput.value = API_BASE;
@@ -738,6 +740,9 @@
 
   function renderMyHand(st, myTurn, legalIds) {
     if (!myHandDock) return;
+    if (!myTurn) selectedPlayCid = null;
+    else if (selectedPlayCid != null && !legalIds.has(selectedPlayCid)) selectedPlayCid = null;
+
     const epochKey = `${st.table_id}:${st.deal_epoch ?? 0}`;
     const tricking =
       (st.completed_tricks || []).length > 0 || ((st.current_trick || []).length > 0);
@@ -756,9 +761,49 @@
     row.className = 'my-hand-row';
     myHandDock.appendChild(row);
 
+    const bar = document.createElement('div');
+    bar.className = 'my-play-bar';
+    const btnPlay = document.createElement('button');
+    btnPlay.type = 'button';
+    btnPlay.className = 'btn primary';
+    btnPlay.textContent = '出牌';
+    const hintSpan = document.createElement('span');
+    hintSpan.className = 'muted small play-hint';
+    bar.appendChild(btnPlay);
+    bar.appendChild(hintSpan);
+    myHandDock.appendChild(bar);
+
+    function updatePlayChrome() {
+      const canAct = myTurn && !dealingInProgress;
+      btnPlay.disabled = !canAct || selectedPlayCid == null;
+      if (!myTurn) hintSpan.textContent = '';
+      else if (dealingInProgress) hintSpan.textContent = '发牌中，请稍候…';
+      else if (selectedPlayCid == null) hintSpan.textContent = '先点击一张合法牌选定，再点「出牌」';
+      else hintSpan.textContent = '已选定，点「出牌」提交；可再点其他牌改选';
+    }
+
+    btnPlay.addEventListener('click', () => {
+      if (dealingInProgress || selectedPlayCid == null || !myTurn) return;
+      playCard(selectedPlayCid);
+    });
+
     if (!Array.isArray(mine) || !mine.length) {
       row.textContent = '（暂无手牌）';
+      btnPlay.disabled = true;
+      hintSpan.textContent = '';
       return;
+    }
+
+    function wirePick(el, c) {
+      el.dataset.pickCid = String(c.cid);
+      if (!(myTurn && legalIds.has(c.cid))) return;
+      el.addEventListener('click', () => {
+        if (dealingInProgress) return;
+        selectedPlayCid = c.cid;
+        row.querySelectorAll('.card-face').forEach((x) => x.classList.remove('card-selected'));
+        el.classList.add('card-selected');
+        updatePlayChrome();
+      });
     }
 
     const sorted = sortHandForReveal(mine);
@@ -769,18 +814,15 @@
       cancelDealAnimation();
       dealingInProgress = true;
       dealOverlay?.classList.remove('hidden');
+      selectedPlayCid = null;
+      updatePlayChrome();
       sorted.forEach((c, i) => {
         const el = document.createElement('div');
         el.className = 'card-face card-deal-pending' + (myTurn && legalIds.has(c.cid) ? ' playable' : ' dim');
         applyCardFace(el, c);
         el.style.opacity = '0';
         el.title = (c.label || '') + ' · cid=' + c.cid;
-        if (myTurn && legalIds.has(c.cid)) {
-          el.addEventListener('click', () => {
-            if (dealingInProgress) return;
-            playCard(c.cid);
-          });
-        }
+        wirePick(el, c);
         row.appendChild(el);
         const tid = setTimeout(() => {
           el.style.opacity = '1';
@@ -792,6 +834,7 @@
         dealingInProgress = false;
         dealAnimConsumedKey = epochKey;
         dealOverlay?.classList.add('hidden');
+        updatePlayChrome();
       }, sorted.length * DEAL_STAGGER_MS + 120);
       dealTimers.push(fin);
     } else {
@@ -800,11 +843,11 @@
         el.className = 'card-face' + (myTurn && legalIds.has(c.cid) ? ' playable' : ' dim');
         applyCardFace(el, c);
         el.title = (c.label || '') + ' · cid=' + c.cid;
-        if (myTurn && legalIds.has(c.cid) && !dealingInProgress) {
-          el.addEventListener('click', () => playCard(c.cid));
-        }
+        wirePick(el, c);
+        if (selectedPlayCid != null && String(selectedPlayCid) === String(c.cid)) el.classList.add('card-selected');
         row.appendChild(el);
       });
+      updatePlayChrome();
     }
   }
 
@@ -847,8 +890,8 @@
         ? `轮到 座${st.to_act_seat} · 你在 座${viewer}` +
           (myTurn
             ? dealingInProgress
-              ? ' — 发牌后可以出牌'
-              : ' — 点下方手牌'
+              ? ' — 发牌后可选手牌，再点出牌'
+              : ' — 点选手牌后点「出牌」'
             : dealingInProgress
               ? ' — 发牌中…'
               : ' — 等待')
