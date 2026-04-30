@@ -113,6 +113,10 @@
   let boardLayoutKey = '';
   /** Hand card chosen for confirmation (click then 「出牌」). */
   let selectedPlayCid = null;
+  /** Trick history sidebar: default to last completed trick until user touches the dropdown. */
+  let trickHistManual = false;
+  /** New deal resets trickHistManual when epoch changes. */
+  let trickHistSyncedEpoch = null;
 
   apiPill.textContent = `API: ${API_BASE}`;
   apiBaseInput.value = API_BASE;
@@ -207,6 +211,8 @@
     dealingInProgress = false;
     dealAnimConsumedKey = '';
     boardLayoutKey = '';
+    trickHistManual = false;
+    trickHistSyncedEpoch = null;
     if (board) board.innerHTML = '';
     if (myHandDock) myHandDock.innerHTML = '';
     if (trickHistorySelect) trickHistorySelect.innerHTML = '';
@@ -696,6 +702,12 @@
     if (!trickHistorySelect || !trickHistoryView) return;
     const done = st.completed_tricks || [];
     const prev = trickHistorySelect.value;
+    const epoch = st.deal_epoch ?? 0;
+    if (trickHistSyncedEpoch !== epoch) {
+      trickHistSyncedEpoch = epoch;
+      trickHistManual = false;
+    }
+
     trickHistorySelect.innerHTML = '';
     const o0 = document.createElement('option');
     o0.value = 'cur';
@@ -704,11 +716,17 @@
     done.forEach((t, i) => {
       const o = document.createElement('option');
       const idx = t.index ?? i + 1;
-      o.value = String(idx - 1);
+      o.value = String(i);
       o.textContent = `第 ${idx} 墩 · ${t.trick_points} 分 · 胜 座 ${t.winner_seat}`;
       trickHistorySelect.appendChild(o);
     });
-    trickHistorySelect.value = prev === 'cur' || !done.some((_, i) => String(i) === prev) ? 'cur' : prev;
+
+    const lastKey = done.length ? String(done.length - 1) : null;
+    const prevOk = prev === 'cur' || (prev !== '' && done.some((_, i) => String(i) === prev));
+    let pick;
+    if (!trickHistManual) pick = lastKey !== null ? lastKey : 'cur';
+    else pick = prevOk ? prev : lastKey !== null ? lastKey : 'cur';
+    trickHistorySelect.value = pick;
     renderTrickHistoryPanel(st);
   }
 
@@ -1018,6 +1036,7 @@
   }
 
   trickHistorySelect?.addEventListener('change', () => {
+    trickHistManual = true;
     if (app.lastState) renderTrickHistoryPanel(app.lastState);
   });
 
