@@ -1,5 +1,7 @@
 name: Deploy Pages
 
+# Frontend: push to main under frontend/**, or edit this workflow, or use Actions → workflow_dispatch.
+
 on:
   push:
     branches: ["main"]
