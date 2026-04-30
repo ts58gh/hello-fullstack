@@ -308,9 +308,9 @@ select {
 
 .game-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--sheng-side-w, 168px);
+  grid-template-columns: minmax(0, 1fr) var(--sheng-side-w, 184px);
   gap: 12px 10px;
-  padding: 0 4px 12px;
+  padding: 0 5px 12px;
   align-items: start;
 }
 
@@ -406,11 +406,16 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  min-width: 0;
 }
 
 .board-fit-viewport .sb-board {
   box-sizing: border-box;
   transform-origin: center center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .board-resize-handle {
@@ -476,7 +481,8 @@ body.board-resize-dragging-x {
     '. n .'
     'w c e'
     '. s .';
-  grid-template-columns: minmax(56px, 3.75vw) minmax(168px, 1fr) minmax(56px, 3.75vw);
+  /* fr shares + min floor: avoids shrink-to-fit collapsing 1fr to min-only when width was auto */
+  grid-template-columns: minmax(92px, 0.32fr) minmax(268px, 1fr) minmax(92px, 0.32fr);
   grid-template-rows: auto minmax(368px, 1fr) auto;
   gap: 12px 12px;
 }
@@ -587,7 +593,7 @@ body.board-resize-dragging-x {
   width: 100%;
   max-width: none;
   min-width: 0;
-  height: clamp(392px, 48vh, 720px);
+  height: clamp(408px, 50vh, 700px);
   max-height: none;
   margin: 0;
   align-self: stretch;

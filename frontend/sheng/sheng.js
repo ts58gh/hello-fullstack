@@ -1409,7 +1409,7 @@
         startX = e.clientX;
         const cur = gameShell?.style.getPropertyValue('--sheng-side-w').trim();
         startW = parseInt(cur, 10);
-        if (!Number.isFinite(startW)) startW = 168;
+        if (!Number.isFinite(startW)) startW = 184;
         document.body.classList.add('board-resize-dragging-x');
         try {
           boardResizeHandleX.setPointerCapture(e.pointerId);
@@ -1433,7 +1433,7 @@
         e.preventDefault();
         const raw = gameShell?.style.getPropertyValue('--sheng-side-w').trim();
         let base = parseInt(raw, 10);
-        if (!Number.isFinite(base)) base = 168;
+        if (!Number.isFinite(base)) base = 184;
         const delta = e.key === 'ArrowRight' ? 24 : -24;
         applySideW(base + delta, true);
         scheduleBoardFit();
