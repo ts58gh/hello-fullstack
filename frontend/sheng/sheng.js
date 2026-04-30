@@ -623,14 +623,28 @@
   }
 
   let boardHeightPinned = false;
+  let boardWidthPinned = false;
   function boardHeightBounds() {
     const min = 240;
     const max = Math.max(min + 80, Math.min(window.innerHeight - 96, 1400));
     return { min, max };
   }
 
+  function boardWidthBounds() {
+    const fr = boardResizeFrame;
+    const cw = fr ? fr.getBoundingClientRect().width : window.innerWidth;
+    const min = 420;
+    const max = Math.max(min + 80, Math.min(cw - 30, 1800));
+    return { min, max };
+  }
+
   function clampBoardHeight(px) {
     const { min, max } = boardHeightBounds();
+    return Math.round(Math.min(max, Math.max(min, px)));
+  }
+
+  function clampBoardWidth(px) {
+    const { min, max } = boardWidthBounds();
     return Math.round(Math.min(max, Math.max(min, px)));
   }
 
@@ -659,6 +673,20 @@
     }
   }
 
+  function applyBoardHostWidth(px, opts) {
+    const host = boardResizeHost;
+    if (!host) return;
+    const persist = !!(opts && opts.persist);
+    const w = clampBoardWidth(px);
+    host.style.setProperty('--sheng-board-w', `${w}px`);
+    if (persist) {
+      boardWidthPinned = true;
+      try {
+        localStorage.setItem(STORAGE_BOARD_W, String(w));
+      } catch (_) {}
+    }
+  }
+
   function syncBoardFitScale() {
     const host = boardResizeHost;
     const wrap = boardScaleWrap;
@@ -669,7 +697,7 @@
     wrap.style.width = '';
     wrap.style.height = '';
 
-    const hw = host.clientWidth;
+    let hw = host.clientWidth;
     let hh = host.clientHeight;
     if (hw < 12 || hh < 12) return;
 
@@ -679,13 +707,31 @@
     if (nh < 12) nh = panel.scrollHeight;
     if (nw < 8 || nh < 8) return;
 
-    // If the user hasn't pinned a height, prefer "full width" like the hand row:
-    // auto-adjust the host height so width-fit doesn't shrink horizontally.
-    if (!boardHeightPinned) {
-      const sw = Math.min(hw / nw, 1);
-      const idealH = nh * sw;
-      applyBoardHostHeight(idealH, { persist: false });
-      // Re-read host height after adjustment.
+    // Smart aspect ratio: when user hasn't pinned width/height, pick a host (w,h)
+    // that matches board natural ratio and fits the viewport, so the board stays full-width.
+    if (!boardWidthPinned || !boardHeightPinned) {
+      const ratio = nh / nw;
+      const wb = boardWidthBounds();
+      const hb = boardHeightBounds();
+
+      let wantW = boardWidthPinned ? hw : wb.max;
+      let wantH = boardHeightPinned ? hh : wantW * ratio;
+
+      if (!boardHeightPinned && wantH > hb.max) {
+        wantH = hb.max;
+        wantW = wantH / ratio;
+      }
+      if (!boardWidthPinned && wantW > wb.max) wantW = wb.max;
+      if (!boardWidthPinned && wantW < wb.min) wantW = wb.min;
+      if (!boardHeightPinned && wantH < hb.min) {
+        wantH = hb.min;
+        wantW = wantH / ratio;
+      }
+
+      if (!boardWidthPinned) applyBoardHostWidth(wantW, { persist: false });
+      if (!boardHeightPinned) applyBoardHostHeight(wantH, { persist: false });
+
+      hw = host.clientWidth;
       hh = host.clientHeight;
     }
 
@@ -1311,26 +1357,15 @@
       }
     }
 
-    function clampWidth(px) {
-      const fr = boardResizeFrame;
-      const cw = fr ? fr.getBoundingClientRect().width : window.innerWidth;
-      const min = 420;
-      const max = Math.max(min + 80, Math.min(cw - 30, 1800));
-      return Math.round(Math.min(max, Math.max(min, px)));
-    }
-
     function applyWidth(px, persist) {
-      const w = clampWidth(px);
-      host.style.setProperty('--sheng-board-w', `${w}px`);
-      if (persist) {
-        try {
-          localStorage.setItem(STORAGE_BOARD_W, String(w));
-        } catch (_) {}
-      }
+      applyBoardHostWidth(px, { persist });
     }
 
     const savedW = readSavedW();
-    if (savedW != null) applyWidth(savedW, true);
+    if (savedW != null) {
+      boardWidthPinned = true;
+      applyWidth(savedW, true);
+    }
 
     let drag = false;
     let startY = 0;
@@ -1418,6 +1453,7 @@
         try {
           localStorage.removeItem(STORAGE_BOARD_W);
         } catch (_) {}
+        boardWidthPinned = false;
         scheduleBoardFit();
       });
 
