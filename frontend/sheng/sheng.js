@@ -634,7 +634,8 @@
     const fr = boardResizeFrame;
     const cw = fr ? fr.getBoundingClientRect().width : window.innerWidth;
     const min = 420;
-    const max = Math.max(min + 80, Math.min(cw - 30, 1800));
+    // Max should track viewport/container; avoid hard cap so ultrawide can expand.
+    const max = Math.max(min + 80, cw - 30);
     return { min, max };
   }
 
@@ -1437,6 +1438,9 @@
       boardResizeHandleX.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return;
         dragX = true;
+        // Requirement: horizontal drag changes width only; lock current height from auto-fit.
+        // (User can still change height later via the vertical handle.)
+        boardHeightPinned = true;
         startX = e.clientX;
         startW = host.getBoundingClientRect().width;
         document.body.classList.add('board-resize-dragging-x');
@@ -1455,6 +1459,9 @@
           localStorage.removeItem(STORAGE_BOARD_W);
         } catch (_) {}
         boardWidthPinned = false;
+        // If user only pinned width before, allow smart auto-fit again.
+        // (If height was explicitly pinned via vertical handle, it remains pinned.)
+        if (!localStorage.getItem(STORAGE_BOARD_H)) boardHeightPinned = false;
         scheduleBoardFit();
       });
 
