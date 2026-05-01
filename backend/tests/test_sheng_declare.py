@@ -52,6 +52,22 @@ def _declare_then_bury_auto(rh: RunningHand) -> None:
     _bury_min_ids(rh)
 
 
+def test_declare_showcase_tracks_current_bid_and_clears_on_finish() -> None:
+    rh = RunningHand.deal_new(num_players=4, seed=55, declarer_seat=0, match_level_rank=7)
+    rh.reveal_full_deal()
+    a = rh.declare_to_act_seat
+    opts = [o for o in rh.legal_declare_options(a) if o.get("kind") == "bid_plain"]
+    assert opts
+    suit = opts[0]["suit"]
+    rh.declare_submit(a, {"action": "bid_plain", "suit": suit})
+    assert rh._declare_face_up_seat == a and len(rh._declare_face_up) == 1
+    hid_cid = rh._declare_face_up[0].cid
+    assert all(c.cid != hid_cid for c in rh._pile_for_declare_checks(a))
+    _declare_passes_to_kitty(rh)
+    assert rh.phase == "kitty"
+    assert rh._declare_face_up_seat is None and len(rh._declare_face_up) == 0
+
+
 def test_all_pass_defaults_hearts_then_play_phase() -> None:
     rh = RunningHand.deal_new(num_players=4, seed=999, declarer_seat=0, match_level_rank=7)
     rh.reveal_full_deal()

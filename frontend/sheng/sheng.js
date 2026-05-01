@@ -98,7 +98,7 @@
   const boardResizeHandle = $('boardResizeHandle');
   const boardResizeHandleX = $('boardResizeHandleX');
   const boardScaleWrap = $('boardScaleWrap');
-  const board = $('board');
+  const boardDeclareMount = $('boardDeclareMount');
   const metaBar = $('metaBar');
   const dealOverlay = $('dealOverlay');
   const myHandDock = $('myHandDock');
@@ -239,6 +239,10 @@
     eventLog.textContent = '(无)';
     wsPill.textContent = 'WS: —';
     $('friendSixSection')?.classList.add('hidden');
+    if (boardDeclareMount) {
+      boardDeclareMount.innerHTML = '';
+      boardDeclareMount.classList.add('hidden');
+    }
   }
 
   /** @returns {{ nth: number, suit: string, rank: number } | null} */
@@ -1038,6 +1042,42 @@
     return pm;
   }
 
+  function resolveDeclareFaceUp(st) {
+    if (!st) return null;
+    const raw = st.declare_face_up ?? st.declareFaceUp;
+    if (!raw || raw.seat === undefined || raw.seat === null) return null;
+    const cards = Array.isArray(raw.cards) ? raw.cards : [];
+    if (!cards.length) return null;
+    return { seat: Number(raw.seat), cards };
+  }
+
+  /** 明示牌挂载在 felts **外** `#boardDeclareMount`，避免整块 board 清空或缩放视口裁剪掉。 */
+  function paintDeclareShowcaseMount(st) {
+    if (!boardDeclareMount) return;
+    boardDeclareMount.innerHTML = '';
+    boardDeclareMount.classList.add('hidden');
+    if (!st || st.phase !== 'declare') return;
+    const df = resolveDeclareFaceUp(st);
+    if (!df) return;
+    boardDeclareMount.classList.remove('hidden');
+    const strip = document.createElement('div');
+    strip.className = 'declare-showcase-strip';
+    const lbl = document.createElement('div');
+    lbl.className = 'declare-showcase-lbl';
+    lbl.textContent = `桌面上 · 座${df.seat} 叫牌明示（被反后收回手中）`;
+    const row = document.createElement('div');
+    row.className = 'declare-showcase-cards';
+    df.cards.forEach((card) => {
+      const cf = document.createElement('div');
+      cf.className = 'card-face card-face--declare-show';
+      applyCardFace(cf, card);
+      row.appendChild(cf);
+    });
+    strip.appendChild(lbl);
+    strip.appendChild(row);
+    boardDeclareMount.appendChild(strip);
+  }
+
   function updateSeatActingHighlight(st) {
     if (!board) return;
     let act = NaN;
@@ -1566,6 +1606,7 @@
     gameShell?.classList.toggle('game-shell--6', np === 6);
 
     const playmat = ensureBoardLayout(st);
+    paintDeclareShowcaseMount(st);
     fillMetaBar(st);
     fillScoreBoard(st);
     syncHistorySelect(st);

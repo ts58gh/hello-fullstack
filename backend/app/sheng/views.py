@@ -72,6 +72,9 @@ def serial_hands(room: ShengRoom, viewer: int) -> list[Any]:
     for seat, hz in enumerate(rh.hands):
         if rh.phase == "declare":
             visible = rh._visible_cards(seat)
+            if rh._declare_face_up_seat == seat and len(rh._declare_face_up) > 0:
+                hid = {c.cid for c in rh._declare_face_up}
+                visible = [c for c in visible if c.cid not in hid]
             if seat == viewer:
                 out.append([_serialize_card(x) for x in visible])
             else:
@@ -145,6 +148,16 @@ def view_for(room: ShengRoom, viewer: int) -> dict[str, Any]:
         "declare_best_key": list(rh.declare_best_key) if rh.phase == "declare" else None,
         "legal_declare": legal_declare,
         "declare_history": list(rh.declare_history),
+        "declare_face_up": (
+            {
+                "seat": rh._declare_face_up_seat,
+                "cards": [_serialize_card(c) for c in rh._declare_face_up],
+            }
+            if rh.phase == "declare"
+            and rh._declare_face_up_seat is not None
+            and len(rh._declare_face_up) > 0
+            else None
+        ),
         "deal_reveal_steps": rh.deal_reveal_steps,
         "deal_total_steps": len(rh._deal_flat),
         "bury_to_act_seat": rh.declarer_seat if rh.phase == "kitty" else None,

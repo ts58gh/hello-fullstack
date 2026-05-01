@@ -119,6 +119,8 @@ class RunningHand:
     opening_bank_seat: int = 0
     declare_winner_seat: int | None = None
     declare_stakes: int = 0
+    _declare_face_up_seat: int | None = field(default=None, repr=False)
+    _declare_face_up: tuple[PhysCard, ...] = field(default_factory=tuple, repr=False)
     phase: Literal["declare", "kitty", "play", "scored"] = "declare"
     declare_history: list[dict[str, Any]] = field(default_factory=list)
     result: HandResult | None = None
@@ -254,9 +256,54 @@ class RunningHand:
         return {"events": [ev_bury]}
 
     def _pile_for_declare_checks(self, seat: int) -> list[PhysCard]:
-        """Cards this seat may use to declare (progressive deal = visible subset)."""
+        """Progressive-visible row excluding cards currently laid face-up by this seat."""
 
-        return self._visible_cards(seat)
+        vis = self._visible_cards(seat)
+        if (
+            self._declare_face_up_seat == seat
+            and self._declare_face_up_seat is not None
+            and len(self._declare_face_up) > 0
+        ):
+            hide = {c.cid for c in self._declare_face_up}
+            return [c for c in vis if c.cid not in hide]
+        return vis
+
+    def _pick_showcase_plain(self, avail: list[PhysCard], suit: Suit) -> PhysCard:
+        mr = self.match_level_rank
+        cand = [
+            c
+            for c in avail
+            if isinstance(c.face, RegularFace)
+            and c.face.rank == mr
+            and c.face.suit == suit
+        ]
+        if not cand:
+            raise ValueError("internal: no showcase material for plain bid")
+        return min(cand, key=lambda x: x.cid)
+
+    @staticmethod
+    def _pick_showcase_pair(avail: list[PhysCard], suit: Suit, match_rank: int) -> tuple[PhysCard, PhysCard]:
+        cand = sorted(
+            [
+                c
+                for c in avail
+                if isinstance(c.face, RegularFace)
+                and c.face.rank == match_rank
+                and c.face.suit == suit
+            ],
+            key=lambda x: x.cid,
+        )
+        if len(cand) < 2:
+            raise ValueError("internal: showcase pair unavailable")
+        return (cand[0], cand[1])
+
+    @staticmethod
+    def _pick_showcase_nt(avail: list[PhysCard]) -> tuple[PhysCard, PhysCard]:
+        sjs = [c for c in avail if isinstance(c.face, JokerFace) and not c.face.big]
+        bjs = [c for c in avail if isinstance(c.face, JokerFace) and c.face.big]
+        if not sjs or not bjs:
+            raise ValueError("internal: showcase jokers unavailable")
+        return (min(sjs, key=lambda x: x.cid), min(bjs, key=lambda x: x.cid))
 
     def _level_cards_in_suit_count(self, seat: int, suit: Suit) -> int:
         return self._level_cards_in_suit_from(self.hands[seat], suit)
@@ -310,6 +357,7 @@ class RunningHand:
         new_key: tuple[int, ...],
         line: str,
         events: list[dict[str, Any]],
+        showcase_cards: tuple[PhysCard, ...],
         **kv: Any,
     ) -> None:
         if not (new_key > self.declare_best_key):
@@ -318,10 +366,14 @@ class RunningHand:
         self.declare_best_key = new_key
         self.declare_winner_seat = seat
         self.declare_round_passed.clear()
+        self._declare_face_up_seat = seat
+        self._declare_face_up = showcase_cards
+        cid_list = sorted(c.cid for c in showcase_cards)
         events.append(
             {
                 "type": "declare_bid",
                 "seat": seat,
+                "showcase_card_ids": cid_list,
                 **kv,
                 "declare_stakes_now": self.declare_stakes,
                 "stakes_added": delta,
@@ -360,6 +412,8 @@ class RunningHand:
     def _finish_declare_phase(self, events_out: list[dict[str, Any]]) -> None:
         if self.phase != "declare":
             return
+        self._declare_face_up_seat = None
+        self._declare_face_up = ()
         self.deal_reveal_steps = len(self._deal_flat)
         if self.declare_best_key == (-1,):
             bank = self.opening_bank_seat % self.num_players
@@ -437,11 +491,28 @@ class RunningHand:
             suit = Suit(str(suit_v))
             if not self._hand_has_level_card_in_suit_from(mat, suit):
                 raise ValueError("no playable level-card in this suit")
+            sc = self._pick_showcase_plain(mat, suit)
             nk = self._key_plain(suit)
-            self._apply_winning_declare(seat, nk, "plain", events, trump_suit=suit.value, bid_kind="plain")
+            self._apply_winning_declare(
+                seat,
+                nk,
+                "plain",
+                events,
+                (sc,),
+                trump_suit=suit.value,
+                bid_kind="plain",
+            )
             self.trump_suit = suit
             self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
-            self.declare_history.append({"kind": "bid", "seat": seat, "bid_kind": "plain", "suit": suit.value})
+            self.declare_history.append(
+                {
+                    "kind": "bid",
+                    "seat": seat,
+                    "bid_kind": "plain",
+                    "suit": suit.value,
+                    "card_ids": [sc.cid],
+                }
+            )
         elif action in ("bid_sj", "bid_suit_sj", "bid_bj", "bid_suit_bj"):
             raise ValueError("花色+王牌叫牌已关闭")
         elif action in ("bid_pair",):
@@ -452,18 +523,51 @@ class RunningHand:
             mr = self.match_level_rank
             if RunningHand._level_cards_in_suit_from(mat, suit, match_rank=mr) < 2:
                 raise ValueError("need pair of level cards in suit")
+            pair_cards = RunningHand._pick_showcase_pair(mat, suit, mr)
             nk = self._key_pair(suit)
-            self._apply_winning_declare(seat, nk, "pair", events, trump_suit=suit.value, bid_kind="pair")
+            self._apply_winning_declare(
+                seat,
+                nk,
+                "pair",
+                events,
+                pair_cards,
+                trump_suit=suit.value,
+                bid_kind="pair",
+            )
             self.trump_suit = suit
             self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
-            self.declare_history.append({"kind": "bid", "seat": seat, "bid_kind": "pair", "suit": suit.value})
+            self.declare_history.append(
+                {
+                    "kind": "bid",
+                    "seat": seat,
+                    "bid_kind": "pair",
+                    "suit": suit.value,
+                    "card_ids": sorted([pair_cards[0].cid, pair_cards[1].cid]),
+                }
+            )
         elif action in ("bid_nt", "nt", "no_trump"):
             if not RunningHand._pile_has_both_jokers(mat):
                 raise ValueError("无主 requires big and small joker")
-            self._apply_winning_declare(seat, DECLARE_NT_KEY, "nt", events, trump_suit=None, bid_kind="nt")
+            jc = RunningHand._pick_showcase_nt(mat)
+            self._apply_winning_declare(
+                seat,
+                DECLARE_NT_KEY,
+                "nt",
+                events,
+                jc,
+                trump_suit=None,
+                bid_kind="nt",
+            )
             self.trump_suit = None
             self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=None)
-            self.declare_history.append({"kind": "bid", "seat": seat, "bid_kind": "nt"})
+            self.declare_history.append(
+                {
+                    "kind": "bid",
+                    "seat": seat,
+                    "bid_kind": "nt",
+                    "card_ids": sorted([jc[0].cid, jc[1].cid]),
+                }
+            )
         else:
             raise ValueError("unknown declare action")
 
