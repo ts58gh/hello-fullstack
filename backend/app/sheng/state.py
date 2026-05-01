@@ -22,9 +22,9 @@ TeamId = Literal["A", "B"]
 
 @dataclass
 class TeamTableau:
-    """Per-partnership ladder level (5..A encoded as int rank 5..14)."""
+    """Per-partnership ladder level (2..A encoded as int rank 2..14)."""
 
-    level_rank: int = 5
+    level_rank: int = 2
 
 
 @dataclass

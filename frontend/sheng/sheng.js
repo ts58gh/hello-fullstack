@@ -251,7 +251,7 @@
     const st = app.lastState;
     const lr = st && st.trump && st.trump.level_rank;
     if (typeof lr === 'number' && lr >= 2 && lr <= 14) return lr;
-    return 5;
+    return 2;
   }
 
   /**
@@ -868,14 +868,25 @@
   function fillMetaBar(st) {
     if (!metaBar) return;
     const tr = st.trump || {};
-    metaBar.textContent = [
+    const ob =
+      st.opening_bank_seat !== undefined && st.opening_bank_seat !== null
+        ? Number(st.opening_bank_seat)
+        : NaN;
+    const stk = Number(st.declare_stakes ?? 0);
+    const stkPart = stk > 0 ? `累扣分 ${stk}` : null;
+    const obPart =
+      Number.isFinite(ob) && st.phase === 'declare' ? `原位庄座${ob}（叫到者当庄先出；全过则原位庄红心）` : null;
+    const parts = [
       `阶段 ${st.phase === 'declare' ? '叫主' : st.phase}`,
       `庄 座${st.declarer_seat}`,
       `领出 座${st.leader}`,
       `主 ${tr.trump_suit == null ? '无主' : tr.trump_suit} · 级@${tr.level_rank}`,
+      stkPart,
+      obPart,
       `台面 A${st.teams?.A} / B${st.teams?.B}`,
       `已完墩 ${(st.completed_tricks || []).length}`,
-    ].join(' · ');
+    ].filter(Boolean);
+    metaBar.textContent = parts.join(' · ');
   }
 
   function fillScoreBoard(st) {
@@ -891,6 +902,7 @@
       <div class="sb-row"><span class="lbl">${st.phase === 'declare' ? '叫主' : '出牌'}</span><span>轮到 座<b>${escapeHtml(
         String((st.phase === 'declare' ? st.declare_to_act_seat : st.to_act_seat) ?? '—')
       )}</b></span></div>
+      <div class="sb-row"><span class="lbl">叫主累扣分</span><span><b>${escapeHtml(String(Number(st.declare_stakes ?? 0)))}</b></span></div>
     </div>`;
     let six = '';
     if (st.num_players === 6) {
@@ -1072,7 +1084,7 @@
 
     if (st.phase === 'declare') {
       const ld = legalDeclare || [];
-      title.textContent = '叫主 · 用手中级牌亮花主 · 或无主(须双王)';
+      title.textContent = '叫主 · 可多轮抬主扣分；叫到者庄先领出 · 无主须大王+小王';
       btnPlay.disabled = true;
       btnPlay.style.display = 'none';
       hintSpan.textContent = declareTurn
@@ -1090,25 +1102,35 @@
       bar.insertBefore(passBtn, hintSpan);
 
       const suitNames = { C: '♣ 梅', D: '♦ 方', H: '♥ 红', S: '♠ 黑' };
+      function declarePayloadFor(opt) {
+        if (!opt || opt.kind === 'pass') return null;
+        if (opt.kind === 'bid_plain' || opt.kind === 'bid_suit')
+          return { action: 'bid_plain', suit: opt.suit };
+        if (opt.kind === 'bid_pair') return { action: 'bid_pair', suit: opt.suit };
+        if (opt.kind === 'bid_sj') return { action: 'bid_sj', suit: opt.suit };
+        if (opt.kind === 'bid_bj') return { action: 'bid_bj', suit: opt.suit };
+        if (opt.kind === 'bid_nt') return { action: 'bid_nt' };
+        return null;
+      }
+      function declareLabel(opt) {
+        const sn = suitNames[opt.suit] || opt.suit || '';
+        if (opt.kind === 'bid_plain' || opt.kind === 'bid_suit') return `${sn} 亮级`;
+        if (opt.kind === 'bid_pair') return `${sn} 对级`;
+        if (opt.kind === 'bid_sj') return `${sn} +小王`;
+        if (opt.kind === 'bid_bj') return `${sn} +大王`;
+        return '';
+      }
       ld.forEach((opt) => {
         if (!opt || opt.kind === 'pass') return;
-        if (opt.kind === 'bid_suit') {
-          const b = document.createElement('button');
-          b.type = 'button';
-          b.className = 'btn ghost tiny';
-          b.textContent = suitNames[opt.suit] || opt.suit;
-          b.disabled = !declareTurn || dealingInProgress;
-          b.addEventListener('click', () => submitDeclare({ action: 'bid_suit', suit: opt.suit }));
-          bar.insertBefore(b, hintSpan);
-        } else if (opt.kind === 'bid_nt') {
-          const b = document.createElement('button');
-          b.type = 'button';
-          b.className = 'btn ghost tiny';
-          b.textContent = '无主';
-          b.disabled = !declareTurn || dealingInProgress;
-          b.addEventListener('click', () => submitDeclare({ action: 'bid_nt' }));
-          bar.insertBefore(b, hintSpan);
-        }
+        const pay = declarePayloadFor(opt);
+        if (!pay) return;
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn ghost tiny';
+        b.textContent = pay.action === 'bid_nt' ? '无主' : declareLabel(opt);
+        b.disabled = !declareTurn || dealingInProgress;
+        b.addEventListener('click', () => submitDeclare(pay));
+        bar.insertBefore(b, hintSpan);
       });
 
       const shouldDecl =
@@ -1248,7 +1270,11 @@
       const hs = st.hand_summary;
       summaryBox.classList.remove('hidden');
       summaryBox.innerHTML = hs
-        ? `<strong>本副结束</strong><br/>闲家分: ${hs.defender_points_final}（墩上 ${hs.defender_points_tricks_only}，底牌奖 ${hs.kitty_bonus_to_defenders}）<br/><code>${escapeHtml(JSON.stringify(hs.level_change || {}))}</code>`
+        ? `<strong>本副结束</strong><br/>闲家分: ${hs.defender_points_final}（墩上 ${hs.defender_points_tricks_only}，底牌奖 ${hs.kitty_bonus_to_defenders}${
+            Number(hs.declare_stakes_bonus) > 0
+              ? `，叫主累扣分奖 ${hs.declare_stakes_bonus}`
+              : ''
+          }）<br/><code>${escapeHtml(JSON.stringify(hs.level_change || {}))}</code>`
         : '已记分';
       cancelDealAnimation();
       dealAnimConsumedKey = '';
@@ -1341,7 +1367,7 @@
       return;
     }
     const msg = { type: 'declare', action: extra.action };
-    if (extra.suit) msg.suit = extra.suit;
+    if (extra.suit != null && extra.suit !== '') msg.suit = extra.suit;
     if (app.ws && app.ws.readyState === 1) {
       app.ws.send(JSON.stringify(msg));
       return;
@@ -1373,12 +1399,12 @@
     const body = {
       num_players: numPlayers,
       declarer_seat: 0,
-      match_level_rank: 5,
+      match_level_rank: 2,
     };
     if (seed !== null && !Number.isNaN(seed)) body.seed = seed;
 
     if (numPlayers === 6) {
-      const vr = validateSixFriendCalls(5, 'create');
+      const vr = validateSixFriendCalls(2, 'create');
       if (!vr.ok) {
         statusLine.textContent = vr.message || '朋友叫牌有误';
         return;

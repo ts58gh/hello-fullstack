@@ -1,7 +1,10 @@
 """Run one finished 升级 hand (multi-card combos: single / pair / triple / plain tractor).
 
-First trick opens **left of declarer / 庄家右手** — ``leader=(declarer+1)%n``;
-within the hand subsequent tricks open with the trick winner.
+First trick opens with **庄家领出**. After 叫主, the successful bidder becomes
+``declarer_seat`` and opens; if nobody called, 庄 stays the opening banker and
+
+``leader=(bank+1)%n`` (**庄家下手**).
+
 
 Six-player **找朋友**：可声明两张朋友牌（揭牌由 :mod:`friend` 跟踪）。
 若本副 **两张朋友牌均已揭牌** 且与庄家共 **三** 个不同座位，则 **捡分 / 底牌奖** 按 **3v3**（庄方 vs 三门）计算；否则 **回退为对角两队**。
@@ -49,6 +52,7 @@ class HandResult:
     defender_points_final: int
     defender_points_tricks_only: int
     kitty_bonus_to_defenders: int
+    declare_stakes_bonus: int
     last_trick_winner: int
     level_breakdown: dict
     declarer_seat: int
@@ -65,7 +69,15 @@ class CompletedTrickRecord:
 
 
 DECLARE_SUIT_ORDER: dict[str, int] = {"C": 0, "D": 1, "H": 2, "S": 3}
-DECLARE_NT_STRENGTH = 4
+# Suited keys use (tier, suit_ordinal). NT is top. Same tier: higher suit ordinal wins.
+_DECLARE_TIER_PLAIN = 550
+_DECLARE_TIER_SJ = 620
+_DECLARE_TIER_BJ = 690
+_DECLARE_TIER_PAIR = 760
+DECLARE_NT_KEY: tuple[int, ...] = (900,)
+
+_DECLARE_LINE_STAKE = {"plain": 6, "sj": 14, "bj": 22, "pair": 32, "nt": 42}
+_DECLARE_ANTI_EACH = 8  # 反主加收：压过上一轮叫品时记入闲家加成
 
 
 @dataclass
@@ -87,7 +99,10 @@ class RunningHand:
     _revealed_friend_seats: set[int] = field(default_factory=set, repr=False)
     declare_to_act_seat: int = 0
     declare_passes_since_change: int = 0
-    declare_best_strength: int = -1
+    declare_best_key: tuple[int, ...] = (-1,)
+    opening_bank_seat: int = 0
+    declare_winner_seat: int | None = None
+    declare_stakes: int = 0
     phase: Literal["declare", "play", "scored"] = "declare"
     result: HandResult | None = None
 
@@ -104,7 +119,7 @@ class RunningHand:
         num_players: int = 4,
         seed: int | None = None,
         declarer_seat: int = 0,
-        match_level_rank: int = 5,
+        match_level_rank: int = 2,
         friend_calls: tuple[FriendCall, ...] = (),
     ) -> "RunningHand":
         if num_players not in (4, 6):
@@ -134,7 +149,10 @@ class RunningHand:
             friend_calls=fc_tuple,
             declare_to_act_seat=declare_open,
             declare_passes_since_change=0,
-            declare_best_strength=-1,
+            declare_best_key=(-1,),
+            opening_bank_seat=base,
+            declare_winner_seat=None,
+            declare_stakes=0,
             phase="declare",
         )
 
@@ -153,47 +171,119 @@ class RunningHand:
     def _declare_suit_strength(self, suit: Suit) -> int:
         return DECLARE_SUIT_ORDER[suit.value]
 
-    def _hand_has_level_card_in_suit(self, seat: int, suit: Suit) -> bool:
+    def _level_cards_in_suit_count(self, seat: int, suit: Suit) -> int:
+        n = 0
         for c in self.hands[seat]:
             face = c.face
             if isinstance(face, RegularFace) and face.rank == self.match_level_rank and face.suit == suit:
-                return True
-        return False
+                n += 1
+        return n
+
+    def _hand_has_level_card_in_suit(self, seat: int, suit: Suit) -> bool:
+        return self._level_cards_in_suit_count(seat, suit) >= 1
+
+    def _hand_has_sj(self, seat: int) -> bool:
+        return any(isinstance(c.face, JokerFace) and not c.face.big for c in self.hands[seat])
+
+    def _hand_has_bj(self, seat: int) -> bool:
+        return any(isinstance(c.face, JokerFace) and c.face.big for c in self.hands[seat])
 
     def _hand_has_both_jokers(self, seat: int) -> bool:
-        sj = bj = False
-        for c in self.hands[seat]:
-            if isinstance(c.face, JokerFace):
-                if c.face.big:
-                    bj = True
-                else:
-                    sj = True
-            if sj and bj:
-                return True
-        return False
+        return self._hand_has_sj(seat) and self._hand_has_bj(seat)
+
+    def _key_plain(self, suit: Suit) -> tuple[int, ...]:
+        return (_DECLARE_TIER_PLAIN, self._declare_suit_strength(suit))
+
+    def _key_sj(self, suit: Suit) -> tuple[int, ...]:
+        return (_DECLARE_TIER_SJ, self._declare_suit_strength(suit))
+
+    def _key_bj(self, suit: Suit) -> tuple[int, ...]:
+        return (_DECLARE_TIER_BJ, self._declare_suit_strength(suit))
+
+    def _key_pair(self, suit: Suit) -> tuple[int, ...]:
+        return (_DECLARE_TIER_PAIR, self._declare_suit_strength(suit))
+
+    def _add_stakes(self, line: str) -> int:
+        is_counter = self.declare_best_key != (-1,)
+        delta = _DECLARE_LINE_STAKE[line]
+        if is_counter:
+            delta += _DECLARE_ANTI_EACH
+        self.declare_stakes += delta
+        return delta
+
+    def _apply_winning_declare(
+        self,
+        seat: int,
+        new_key: tuple[int, ...],
+        line: str,
+        events: list[dict[str, Any]],
+        **kv: Any,
+    ) -> None:
+        if not (new_key > self.declare_best_key):
+            raise ValueError("bid does not beat current main")
+        delta = self._add_stakes(line)
+        self.declare_best_key = new_key
+        self.declare_winner_seat = seat
+        self.declare_passes_since_change = 0
+        events.append(
+            {
+                "type": "declare_bid",
+                "seat": seat,
+                **kv,
+                "declare_stakes_now": self.declare_stakes,
+                "stakes_added": delta,
+                "bid_key": list(new_key),
+            }
+        )
 
     def legal_declare_options(self, seat: int) -> list[dict[str, Any]]:
         if self.phase != "declare" or seat != self.declare_to_act_seat:
             return []
         out: list[dict[str, Any]] = [{"kind": "pass"}]
-        b = self.declare_best_strength
+        bk = self.declare_best_key
         for suit in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
-            strength = self._declare_suit_strength(suit)
-            if strength > b and self._hand_has_level_card_in_suit(seat, suit):
-                out.append({"kind": "bid_suit", "suit": suit.value})
-        if DECLARE_NT_STRENGTH > b and self._hand_has_both_jokers(seat):
+            lc = self._level_cards_in_suit_count(seat, suit)
+            if lc >= 2 and self._key_pair(suit) > bk:
+                out.append({"kind": "bid_pair", "suit": suit.value})
+            if lc >= 1:
+                has_sj = self._hand_has_sj(seat)
+                has_bj = self._hand_has_bj(seat)
+                if self._key_plain(suit) > bk:
+                    out.append({"kind": "bid_plain", "suit": suit.value})
+                if has_sj and self._key_sj(suit) > bk:
+                    out.append({"kind": "bid_sj", "suit": suit.value})
+                if has_bj and self._key_bj(suit) > bk:
+                    out.append({"kind": "bid_bj", "suit": suit.value})
+        if self._hand_has_both_jokers(seat) and DECLARE_NT_KEY > bk:
             out.append({"kind": "bid_nt"})
         return out
 
     def _finish_declare_phase(self, events_out: list[dict[str, Any]]) -> None:
         if self.phase != "declare":
             return
-        if self.declare_best_strength < 0:
+        if self.declare_best_key == (-1,):
+            bank = self.opening_bank_seat % self.num_players
+            self.declarer_seat = bank
             self.trump_suit = Suit.HEARTS
             self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=Suit.HEARTS)
+            self.leader = (bank + 1) % self.num_players
+            self.declare_winner_seat = None
+        else:
+            ws = self.declare_winner_seat
+            assert ws is not None
+            self.declarer_seat = ws % self.num_players
+            self.leader = self.declarer_seat
         self.phase = "play"
         ts = None if self.trump_suit is None else self.trump_suit.value
-        events_out.append({"type": "declare_done", "trump_suit": ts})
+        events_out.append(
+            {
+                "type": "declare_done",
+                "trump_suit": ts,
+                "declarer_seat": self.declarer_seat,
+                "leader": self.leader,
+                "declare_stakes": self.declare_stakes,
+            }
+        )
 
     def declare_submit(self, seat: int, payload: dict[str, Any]) -> dict[str, Any]:
         if self.phase != "declare":
@@ -208,37 +298,62 @@ class RunningHand:
         if action in ("pass",):
             self.declare_passes_since_change += 1
             events.append({"type": "declare_pass", "seat": seat})
-        elif action in ("bid_suit", "suit"):
+        elif action in ("bid_suit", "bid_plain"):
             suit_v = payload.get("suit")
             if suit_v is None:
-                raise ValueError("suit required for bid_suit")
+                raise ValueError("suit required")
             suit = Suit(str(suit_v))
-            strength = self._declare_suit_strength(suit)
-            if strength <= self.declare_best_strength:
-                raise ValueError("bid does not beat current main")
             if not self._hand_has_level_card_in_suit(seat, suit):
                 raise ValueError("no playable level-card in this suit")
-            self.declare_best_strength = strength
+            nk = self._key_plain(suit)
+            self._apply_winning_declare(seat, nk, "plain", events, trump_suit=suit.value, bid_kind="plain")
             self.trump_suit = suit
             self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
-            self.declare_passes_since_change = 0
-            events.append({"type": "declare_bid", "seat": seat, "trump_suit": suit.value, "bid_kind": "suit"})
+        elif action in ("bid_sj", "bid_suit_sj"):
+            suit_v = payload.get("suit")
+            if suit_v is None:
+                raise ValueError("suit required")
+            suit = Suit(str(suit_v))
+            if not self._hand_has_level_card_in_suit(seat, suit) or not self._hand_has_sj(seat):
+                raise ValueError("needs level card + small joker")
+            nk = self._key_sj(suit)
+            self._apply_winning_declare(seat, nk, "sj", events, trump_suit=suit.value, bid_kind="sj")
+            self.trump_suit = suit
+            self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
+        elif action in ("bid_bj", "bid_suit_bj"):
+            suit_v = payload.get("suit")
+            if suit_v is None:
+                raise ValueError("suit required")
+            suit = Suit(str(suit_v))
+            if not self._hand_has_level_card_in_suit(seat, suit) or not self._hand_has_bj(seat):
+                raise ValueError("needs level card + big joker")
+            nk = self._key_bj(suit)
+            self._apply_winning_declare(seat, nk, "bj", events, trump_suit=suit.value, bid_kind="bj")
+            self.trump_suit = suit
+            self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
+        elif action in ("bid_pair",):
+            suit_v = payload.get("suit")
+            if suit_v is None:
+                raise ValueError("suit required")
+            suit = Suit(str(suit_v))
+            if self._level_cards_in_suit_count(seat, suit) < 2:
+                raise ValueError("need pair of level cards in suit")
+            nk = self._key_pair(suit)
+            self._apply_winning_declare(seat, nk, "pair", events, trump_suit=suit.value, bid_kind="pair")
+            self.trump_suit = suit
+            self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
         elif action in ("bid_nt", "nt", "no_trump"):
-            if DECLARE_NT_STRENGTH <= self.declare_best_strength:
-                raise ValueError("bid does not beat current main")
             if not self._hand_has_both_jokers(seat):
-                raise ValueError("无主 requires big and small joker in hand")
-            self.declare_best_strength = DECLARE_NT_STRENGTH
+                raise ValueError("无主 requires big and small joker")
+            self._apply_winning_declare(seat, DECLARE_NT_KEY, "nt", events, trump_suit=None, bid_kind="nt")
             self.trump_suit = None
             self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=None)
-            self.declare_passes_since_change = 0
-            events.append({"type": "declare_bid", "seat": seat, "trump_suit": None, "bid_kind": "nt"})
         else:
             raise ValueError("unknown declare action")
 
         if self.declare_passes_since_change >= self.num_players:
             self._finish_declare_phase(events)
-        else:
+        elif self.phase == "declare":
             self.declare_to_act_seat = (self.declare_to_act_seat + 1) % self.num_players
 
         return {"events": events}
@@ -344,13 +459,15 @@ class RunningHand:
         if last_trick_winner not in atk:
             kitty_bonus += bonus_base
 
-        defender_final = trick_part + kitty_bonus
+        stakes = int(self.declare_stakes)
+        defender_final = trick_part + kitty_bonus + stakes
 
         self.phase = "scored"
         self.result = HandResult(
             defender_points_final=defender_final,
             defender_points_tricks_only=trick_part,
             kitty_bonus_to_defenders=kitty_bonus,
+            declare_stakes_bonus=stakes,
             last_trick_winner=last_trick_winner,
             level_breakdown=level_change_after_deal(defender_final, th),
             declarer_seat=self.declarer_seat,
@@ -373,4 +490,5 @@ def defender_summary(res: HandResult) -> dict:
         "defender_points_final": res.defender_points_final,
         "defender_points_tricks_only": res.defender_points_tricks_only,
         "kitty_bonus_to_defenders": res.kitty_bonus_to_defenders,
+        "declare_stakes_bonus": res.declare_stakes_bonus,
     }

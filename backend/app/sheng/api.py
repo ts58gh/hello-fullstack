@@ -33,7 +33,7 @@ class CreateTableBody(BaseModel):
     num_players: Literal[4, 6] = Field(default=4)
     seed: Optional[int] = None
     declarer_seat: int = Field(default=0, ge=0)
-    match_level_rank: int = Field(default=5, ge=5, le=14)
+    match_level_rank: int = Field(default=2, ge=2, le=14)
     friend_calls: Optional[list[FriendCallSpec]] = None
 
 
@@ -67,7 +67,7 @@ class NextHandResponse(BaseModel):
 
 class DeclareBody(BaseModel):
     token: str = Field(..., min_length=4)
-    action: Literal["pass", "bid_suit", "bid_nt"]
+    action: Literal["pass", "bid_plain", "bid_suit", "bid_sj", "bid_suit_sj", "bid_bj", "bid_suit_bj", "bid_pair", "bid_nt"]
     suit: Optional[Literal["C", "D", "H", "S"]] = None
 
 
@@ -110,9 +110,9 @@ async def create_table(body: Optional[CreateTableBody] = None) -> CreateTableRes
 @router.post("/tables/{table_id}/declare", response_model=DeclareResponse)
 async def post_declare(table_id: str, body: DeclareBody) -> DeclareResponse:
     payload: dict[str, Any] = {"action": body.action}
-    if body.action == "bid_suit":
+    if body.action in ("bid_suit", "bid_plain", "bid_sj", "bid_suit_sj", "bid_bj", "bid_suit_bj", "bid_pair"):
         if body.suit is None:
-            raise HTTPException(status_code=400, detail="suit required for bid_suit")
+            raise HTTPException(status_code=400, detail="suit required for this bid action")
         payload["suit"] = body.suit
     try:
         out = await tables.submit_declare(table_id, body.token, payload)

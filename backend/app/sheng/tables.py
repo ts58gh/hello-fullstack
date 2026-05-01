@@ -19,7 +19,7 @@ def declarer_team_id(declarer_seat: int, _num_players: int) -> TeamId:
 
 
 def clamp_level(rank: int) -> int:
-    return max(5, min(14, rank))
+    return max(2, min(14, rank))
 
 
 def apply_level_breakdown(sm: ShengMatch, declarer_team: TeamId, lb: dict[str, Any]) -> None:
@@ -121,7 +121,7 @@ async def create_room(
     num_players: int = 4,
     seed: int | None = None,
     declarer_seat: int = 0,
-    match_level_rank: int = 5,
+    match_level_rank: int = 2,
     friend_calls: tuple[FriendCall, ...] = (),
 ) -> tuple[ShengRoom, dict[int, str]]:
     if len(_TABLES) >= _MAX_TABLES:
