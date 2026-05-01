@@ -76,6 +76,26 @@ class DeclareResponse(BaseModel):
     state: dict[str, Any]
 
 
+class DealAdvanceBody(BaseModel):
+    token: str = Field(..., min_length=4)
+    steps: int = Field(default=1, ge=1, le=20)
+
+
+class DealAdvanceResponse(BaseModel):
+    events: list[dict[str, Any]]
+    state: dict[str, Any]
+
+
+class BuryBody(BaseModel):
+    token: str = Field(..., min_length=4)
+    card_ids: list[int] = Field(..., min_length=1)
+
+
+class BuryResponse(BaseModel):
+    events: list[dict[str, Any]]
+    state: dict[str, Any]
+
+
 @router.post("/tables", response_model=CreateTableResponse)
 async def create_table(body: Optional[CreateTableBody] = None) -> CreateTableResponse:
     b = body or CreateTableBody()
@@ -126,6 +146,38 @@ async def post_declare(table_id: str, body: DeclareBody) -> DeclareResponse:
         raise HTTPException(status_code=400, detail=str(e)) from None
 
     return DeclareResponse(events=out.get("events") or [], state=view_for(room, seat))
+
+
+@router.post("/tables/{table_id}/deal_advance", response_model=DealAdvanceResponse)
+async def post_deal_advance(table_id: str, body: DealAdvanceBody) -> DealAdvanceResponse:
+    try:
+        out = await tables.submit_deal_advance(table_id, body.token, body.steps)
+        room = tables.get_room(table_id)
+        seat = tables.find_seat_for_token(room, body.token)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="table not found") from None
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="invalid token") from None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+    return DealAdvanceResponse(events=out.get("events") or [], state=view_for(room, seat))
+
+
+@router.post("/tables/{table_id}/bury", response_model=BuryResponse)
+async def post_bury(table_id: str, body: BuryBody) -> BuryResponse:
+    try:
+        out = await tables.submit_bury(table_id, body.token, list(body.card_ids))
+        room = tables.get_room(table_id)
+        seat = tables.find_seat_for_token(room, body.token)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="table not found") from None
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="invalid token") from None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+    return BuryResponse(events=out.get("events") or [], state=view_for(room, seat))
 
 
 @router.get("/tables/{table_id}")

@@ -142,6 +142,26 @@ async def _handle_message(
         except (ValueError, KeyError, PermissionError, TypeError) as e:
             await ws.send_json({"type": "error", "message": str(e)})
         return
+    if mtype == "deal_advance":
+        try:
+            steps_raw = msg.get("steps")
+            steps = int(steps_raw) if steps_raw is not None else 1
+            if steps < 1 or steps > 20:
+                raise ValueError("steps must be 1..20")
+            await sheng_tables.submit_deal_advance(table_id, token, steps)
+        except (ValueError, KeyError, PermissionError, TypeError) as e:
+            await ws.send_json({"type": "error", "message": str(e)})
+        return
+    if mtype == "bury":
+        try:
+            raw_ids = msg.get("card_ids")
+            if not isinstance(raw_ids, list) or not raw_ids:
+                raise ValueError("card_ids (non-empty) required")
+            cids = [int(x) for x in raw_ids]
+            await sheng_tables.submit_bury(table_id, token, cids)
+        except (ValueError, KeyError, PermissionError, TypeError) as e:
+            await ws.send_json({"type": "error", "message": str(e)})
+        return
     if mtype == "action":
         try:
             raw_ids = msg.get("card_ids")

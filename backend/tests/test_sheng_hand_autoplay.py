@@ -5,12 +5,21 @@ from app.sheng.hand import RunningHand
 
 def test_running_hand_autoplay_four_players_to_scored() -> None:
     rh = RunningHand.deal_new(num_players=4, seed=12345, declarer_seat=0, match_level_rank=9)
+    rh.reveal_full_deal()
     safety = 0
-    max_plays = 300
+    max_plays = 400
     while rh.phase != "scored":
         if rh.phase == "declare":
             rh.declare_submit(rh.declare_to_act_seat, {"action": "pass"})
             safety += 1
+            assert safety < max_plays
+            continue
+        if rh.phase == "kitty":
+            d = rh.declarer_seat
+            bury = sorted([c.cid for c in rh.hands[d]])[: rh.bury_card_count]
+            rh.bury_submit(d, bury)
+            safety += 1
+            assert safety < max_plays
             continue
         seat = rh._to_act()
         opts = rh.legal_combo_plays(seat)

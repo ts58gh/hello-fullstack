@@ -10,14 +10,16 @@ def test_shoe_sizes():
 
 def test_deal_partition_four():
     shoe = build_shoe(2)
-    hands, kitty = deal(shoe, 4, seed=12345)
+    hands, kitty, flat = deal(shoe, 4, seed=12345)
     assert len(hands) == 4
     assert all(len(h) == 25 for h in hands)
     assert len(kitty) == 8
+    assert len(flat) == 100
 
 
 def test_deal_partition_six():
     shoe = build_shoe(3)
-    hands, kitty = deal(shoe, 6, seed=42)
+    hands, kitty, flat = deal(shoe, 6, seed=42)
     assert len(hands) == 6 and all(len(h) == 25 for h in hands)
     assert len(kitty) == 12
+    assert len(flat) == 150

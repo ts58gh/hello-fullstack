@@ -9,7 +9,9 @@ First trick opens with **庄家领出**. After 叫主, the successful bidder bec
 Six-player **找朋友**：可声明两张朋友牌（揭牌由 :mod:`friend` 跟踪）。
 若本副 **两张朋友牌均已揭牌** 且与庄家共 **三** 个不同座位，则 **捡分 / 底牌奖** 按 **3v3**（庄方 vs 三门）计算；否则 **回退为对角两队**。
 
-Kitty stays aside until scoring: defenders add ``kitty_multiplier × kitty_points``
+Kitty stays aside until scoring: declarer **merged kitty into hand**, then chooses
+the same count to **bury** as the scoring pile for the hand; defenders add
+``kitty_multiplier × kitty_points``
 to their tally **only when a defender-seat player wins the last trick**.
 """
 
@@ -18,7 +20,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from .cards import JokerFace, PhysCard, RegularFace, Suit, build_shoe, deal, shoe_size_for_players
+from .cards import (
+    JokerFace,
+    PhysCard,
+    RegularFace,
+    Suit,
+    build_shoe,
+    deal,
+    kitty_size,
+    shoe_size_for_players,
+)
 from .combo_legal import combo_trick_winner_seat, legal_plays_for_turn
 from .friend import FriendCall, FriendPlayTracker
 from .scoring import (
@@ -89,6 +100,9 @@ class RunningHand:
     trump_suit: Suit | None
     hands: list[list[PhysCard]]
     kitty: list[PhysCard]
+    _deal_flat: tuple[PhysCard, ...]
+    deal_reveal_steps: int
+    bury_card_count: int
     trump: TrumpContext
     leader: int
     current_trick: list[tuple[int, tuple[PhysCard, ...]]] = field(default_factory=list)
@@ -103,7 +117,8 @@ class RunningHand:
     opening_bank_seat: int = 0
     declare_winner_seat: int | None = None
     declare_stakes: int = 0
-    phase: Literal["declare", "play", "scored"] = "declare"
+    phase: Literal["declare", "kitty", "play", "scored"] = "declare"
+    declare_history: list[dict[str, Any]] = field(default_factory=list)
     result: HandResult | None = None
 
     @property
@@ -126,7 +141,7 @@ class RunningHand:
             raise ValueError("num_players must be 4 or 6")
         nd = shoe_size_for_players(num_players)
         shoe = build_shoe(nd)
-        hands_t, kitty = deal(shoe, num_players, seed=seed)
+        hands_t, kitty, deal_flat = deal(shoe, num_players, seed=seed)
         # Provisional hearts until declare ends (all-pass → Hearts); bid may set suit or NT.
         provisional = Suit.HEARTS
         trump = TrumpContext(level_rank=match_level_rank, trump_suit=provisional)
@@ -143,6 +158,10 @@ class RunningHand:
             trump_suit=provisional,
             hands=list(map(list, hands_t)),
             kitty=list(kitty),
+            _deal_flat=deal_flat,
+            deal_reveal_steps=0,
+            bury_card_count=0,
+            declare_history=[],
             trump=trump,
             leader=leader,
             friend_tracker=tracker,
@@ -168,28 +187,85 @@ class RunningHand:
             drawn.append(hand.pop(idx))
         return tuple(drawn)
 
-    def _declare_suit_strength(self, suit: Suit) -> int:
-        return DECLARE_SUIT_ORDER[suit.value]
+    def _visible_cards(self, seat: int) -> list[PhysCard]:
+        n = self.num_players
+        R = max(0, min(self.deal_reveal_steps, len(self._deal_flat)))
+        return [self._deal_flat[j] for j in range(R) if j % n == seat]
+
+    def reveal_full_deal(self) -> None:
+        """Expose every dealt player card (testing or instant-reveal clients)."""
+
+        self.deal_reveal_steps = len(self._deal_flat)
+
+    def advance_deal_step(self, steps: int = 1) -> list[dict[str, Any]]:
+        if self.phase != "declare":
+            raise ValueError("deal can only advance during declare phase")
+        mx = len(self._deal_flat)
+        prev = self.deal_reveal_steps
+        self.deal_reveal_steps = max(0, min(mx, prev + max(0, int(steps))))
+        return [
+            {
+                "type": "deal_advanced",
+                "deal_reveal_steps": self.deal_reveal_steps,
+                "deal_total_steps": mx,
+            }
+        ]
+
+    def bury_submit(self, seat: int, card_ids: list[int]) -> dict[str, Any]:
+        if self.phase != "kitty":
+            raise ValueError("not in kitty bury phase")
+        if seat != self.declarer_seat:
+            raise PermissionError("only declarer buries the kitty")
+        k = self.bury_card_count
+        if k <= 0:
+            raise ValueError("invalid bury count")
+        wanted = sorted(int(x) for x in card_ids)
+        if len(wanted) != len(set(wanted)) or len(wanted) != k:
+            raise ValueError(f"must bury exactly {k} distinct cards from hand")
+        bundle = list(self._take_cards_ordered(seat, wanted))
+        self.kitty = sorted(bundle, key=lambda c: c.cid)
+        self.phase = "play"
+        self.bury_card_count = 0
+        ev_bury = {"type": "bury_done", "seat": seat, "card_count": len(self.kitty)}
+        self.declare_history.append({"kind": "bury_done", "seat": seat, "bury_count": len(self.kitty)})
+        return {"events": [ev_bury]}
+
+    def _pile_for_declare_checks(self, seat: int) -> list[PhysCard]:
+        """Cards this seat may use to declare (progressive deal = visible subset)."""
+
+        return self._visible_cards(seat)
 
     def _level_cards_in_suit_count(self, seat: int, suit: Suit) -> int:
+        return self._level_cards_in_suit_from(self.hands[seat], suit)
+
+    @staticmethod
+    def _level_cards_in_suit_from(pile: list[PhysCard], suit: Suit, *, match_rank: int) -> int:
         n = 0
-        for c in self.hands[seat]:
+        for c in pile:
             face = c.face
-            if isinstance(face, RegularFace) and face.rank == self.match_level_rank and face.suit == suit:
+            if isinstance(face, RegularFace) and face.rank == match_rank and face.suit == suit:
                 n += 1
         return n
 
-    def _hand_has_level_card_in_suit(self, seat: int, suit: Suit) -> bool:
-        return self._level_cards_in_suit_count(seat, suit) >= 1
+    def _hand_has_level_card_in_suit_from(self, pile: list[PhysCard], suit: Suit) -> bool:
+        return (
+            RunningHand._level_cards_in_suit_from(pile, suit, match_rank=self.match_level_rank) >= 1
+        )
 
-    def _hand_has_sj(self, seat: int) -> bool:
-        return any(isinstance(c.face, JokerFace) and not c.face.big for c in self.hands[seat])
+    @staticmethod
+    def _pile_has_sj(pile: list[PhysCard]) -> bool:
+        return any(isinstance(c.face, JokerFace) and not c.face.big for c in pile)
 
-    def _hand_has_bj(self, seat: int) -> bool:
-        return any(isinstance(c.face, JokerFace) and c.face.big for c in self.hands[seat])
+    @staticmethod
+    def _pile_has_bj(pile: list[PhysCard]) -> bool:
+        return any(isinstance(c.face, JokerFace) and c.face.big for c in pile)
 
-    def _hand_has_both_jokers(self, seat: int) -> bool:
-        return self._hand_has_sj(seat) and self._hand_has_bj(seat)
+    @staticmethod
+    def _pile_has_both_jokers(pile: list[PhysCard]) -> bool:
+        return RunningHand._pile_has_sj(pile) and RunningHand._pile_has_bj(pile)
+
+    def _declare_suit_strength(self, suit: Suit) -> int:
+        return DECLARE_SUIT_ORDER[suit.value]
 
     def _key_plain(self, suit: Suit) -> tuple[int, ...]:
         return (_DECLARE_TIER_PLAIN, self._declare_suit_strength(suit))
@@ -239,28 +315,31 @@ class RunningHand:
     def legal_declare_options(self, seat: int) -> list[dict[str, Any]]:
         if self.phase != "declare" or seat != self.declare_to_act_seat:
             return []
+        mat = self._pile_for_declare_checks(seat)
         out: list[dict[str, Any]] = [{"kind": "pass"}]
         bk = self.declare_best_key
+        mr = self.match_level_rank
         for suit in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
-            lc = self._level_cards_in_suit_count(seat, suit)
+            lc = RunningHand._level_cards_in_suit_from(mat, suit, match_rank=mr)
             if lc >= 2 and self._key_pair(suit) > bk:
                 out.append({"kind": "bid_pair", "suit": suit.value})
             if lc >= 1:
-                has_sj = self._hand_has_sj(seat)
-                has_bj = self._hand_has_bj(seat)
+                has_sj = RunningHand._pile_has_sj(mat)
+                has_bj = RunningHand._pile_has_bj(mat)
                 if self._key_plain(suit) > bk:
                     out.append({"kind": "bid_plain", "suit": suit.value})
                 if has_sj and self._key_sj(suit) > bk:
                     out.append({"kind": "bid_sj", "suit": suit.value})
                 if has_bj and self._key_bj(suit) > bk:
                     out.append({"kind": "bid_bj", "suit": suit.value})
-        if self._hand_has_both_jokers(seat) and DECLARE_NT_KEY > bk:
+        if RunningHand._pile_has_both_jokers(mat) and DECLARE_NT_KEY > bk:
             out.append({"kind": "bid_nt"})
         return out
 
     def _finish_declare_phase(self, events_out: list[dict[str, Any]]) -> None:
         if self.phase != "declare":
             return
+        self.deal_reveal_steps = len(self._deal_flat)
         if self.declare_best_key == (-1,):
             bank = self.opening_bank_seat % self.num_players
             self.declarer_seat = bank
@@ -273,15 +352,28 @@ class RunningHand:
             assert ws is not None
             self.declarer_seat = ws % self.num_players
             self.leader = self.declarer_seat
-        self.phase = "play"
+        kz = kitty_size(self.num_players)
+        self.bury_card_count = kz
+        self.hands[self.declarer_seat].extend(self.kitty)
+        self.kitty = []
+        self.phase = "kitty"
         ts = None if self.trump_suit is None else self.trump_suit.value
-        events_out.append(
+        done_ev = {
+            "type": "declare_done",
+            "trump_suit": ts,
+            "declarer_seat": self.declarer_seat,
+            "leader": self.leader,
+            "declare_stakes": self.declare_stakes,
+            "bury_card_count": kz,
+        }
+        events_out.append(done_ev)
+        self.declare_history.append(
             {
-                "type": "declare_done",
+                "kind": "declare_done",
                 "trump_suit": ts,
                 "declarer_seat": self.declarer_seat,
                 "leader": self.leader,
-                "declare_stakes": self.declare_stakes,
+                "bury_card_count": kz,
             }
         )
 
@@ -295,59 +387,68 @@ class RunningHand:
         action = str(raw).lower().replace("-", "_")
         events: list[dict[str, Any]] = []
 
+        mat = self._pile_for_declare_checks(seat)
+
         if action in ("pass",):
             self.declare_passes_since_change += 1
             events.append({"type": "declare_pass", "seat": seat})
+            self.declare_history.append({"kind": "pass", "seat": seat})
         elif action in ("bid_suit", "bid_plain"):
             suit_v = payload.get("suit")
             if suit_v is None:
                 raise ValueError("suit required")
             suit = Suit(str(suit_v))
-            if not self._hand_has_level_card_in_suit(seat, suit):
+            if not self._hand_has_level_card_in_suit_from(mat, suit):
                 raise ValueError("no playable level-card in this suit")
             nk = self._key_plain(suit)
             self._apply_winning_declare(seat, nk, "plain", events, trump_suit=suit.value, bid_kind="plain")
             self.trump_suit = suit
             self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
+            self.declare_history.append({"kind": "bid", "seat": seat, "bid_kind": "plain", "suit": suit.value})
         elif action in ("bid_sj", "bid_suit_sj"):
             suit_v = payload.get("suit")
             if suit_v is None:
                 raise ValueError("suit required")
             suit = Suit(str(suit_v))
-            if not self._hand_has_level_card_in_suit(seat, suit) or not self._hand_has_sj(seat):
+            if not self._hand_has_level_card_in_suit_from(mat, suit) or not RunningHand._pile_has_sj(mat):
                 raise ValueError("needs level card + small joker")
             nk = self._key_sj(suit)
             self._apply_winning_declare(seat, nk, "sj", events, trump_suit=suit.value, bid_kind="sj")
             self.trump_suit = suit
             self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
+            self.declare_history.append({"kind": "bid", "seat": seat, "bid_kind": "sj", "suit": suit.value})
         elif action in ("bid_bj", "bid_suit_bj"):
             suit_v = payload.get("suit")
             if suit_v is None:
                 raise ValueError("suit required")
             suit = Suit(str(suit_v))
-            if not self._hand_has_level_card_in_suit(seat, suit) or not self._hand_has_bj(seat):
+            if not self._hand_has_level_card_in_suit_from(mat, suit) or not RunningHand._pile_has_bj(mat):
                 raise ValueError("needs level card + big joker")
             nk = self._key_bj(suit)
             self._apply_winning_declare(seat, nk, "bj", events, trump_suit=suit.value, bid_kind="bj")
             self.trump_suit = suit
             self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
+            self.declare_history.append({"kind": "bid", "seat": seat, "bid_kind": "bj", "suit": suit.value})
         elif action in ("bid_pair",):
             suit_v = payload.get("suit")
             if suit_v is None:
                 raise ValueError("suit required")
             suit = Suit(str(suit_v))
-            if self._level_cards_in_suit_count(seat, suit) < 2:
+            mr = self.match_level_rank
+            if RunningHand._level_cards_in_suit_from(mat, suit, match_rank=mr) < 2:
                 raise ValueError("need pair of level cards in suit")
             nk = self._key_pair(suit)
             self._apply_winning_declare(seat, nk, "pair", events, trump_suit=suit.value, bid_kind="pair")
             self.trump_suit = suit
             self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
+            self.declare_history.append({"kind": "bid", "seat": seat, "bid_kind": "pair", "suit": suit.value})
         elif action in ("bid_nt", "nt", "no_trump"):
-            if not self._hand_has_both_jokers(seat):
+            if not RunningHand._pile_has_both_jokers(mat):
                 raise ValueError("无主 requires big and small joker")
             self._apply_winning_declare(seat, DECLARE_NT_KEY, "nt", events, trump_suit=None, bid_kind="nt")
             self.trump_suit = None
             self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=None)
+            self.declare_history.append({"kind": "bid", "seat": seat, "bid_kind": "nt"})
         else:
             raise ValueError("unknown declare action")
 

@@ -140,10 +140,12 @@ def deal(
     num_players: int,
     *,
     seed: int | None = None,
-) -> tuple[list[list[PhysCard]], list[PhysCard]]:
+) -> tuple[list[list[PhysCard]], list[PhysCard], tuple[PhysCard, ...]]:
     """Shuffle ``shoe`` and deal ``cards_per_player`` to each seat in order.
 
-    Seats are indexed 0..num_players-1 clockwise. Remaining cards are the kitty.
+    Seats are indexed 0..num_players-1 clockwise (card at index ``i`` goes to
+    ``i % n``). Remaining cards are the kitty. The third return value is the
+    flat deal order of player cards (length ``n * per``) for progressive reveal.
     """
     n = num_players
     if n not in (4, 6):
@@ -155,11 +157,12 @@ def deal(
     deck = list(shoe)
     rng = random.Random(seed)
     rng.shuffle(deck)
+    flat = tuple(deck[: n * per])
     hands: list[list[PhysCard]] = [[] for _ in range(n)]
-    for i, card in enumerate(deck[: n * per]):
+    for i, card in enumerate(flat):
         hands[i % n].append(card)
     kitty = deck[n * per :]
-    return hands, kitty
+    return hands, kitty, flat
 
 
 def sort_hand_display(cards: list[PhysCard]) -> list[PhysCard]:

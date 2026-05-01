@@ -114,8 +114,9 @@
   const friendSixSection = $('friendSixSection');
 
   let botBusy = false;
-  const DEAL_STAGGER_MS = 42;
+  const DEAL_STAGGER_MS = 88;
   let dealTimers = [];
+  let dealAdvanceChainTid = null;
   let dealingInProgress = false;
   let dealAnimConsumedKey = '';
   let boardLayoutKey = '';
@@ -216,6 +217,10 @@
       dealTimers.forEach((tid) => clearTimeout(tid));
       dealTimers = [];
     }
+    if (dealAdvanceChainTid) {
+      clearTimeout(dealAdvanceChainTid);
+      dealAdvanceChainTid = null;
+    }
     dealingInProgress = false;
     dealAnimConsumedKey = '';
     boardLayoutKey = '';
@@ -282,9 +287,85 @@
     return app.tokens[String(s)] || '';
   }
 
+  function phaseLabelZh(ph) {
+    if (ph === 'declare') return '叫主';
+    if (ph === 'kitty') return '埋底';
+    if (ph === 'play') return '出牌';
+    if (ph === 'scored') return '记分';
+    return String(ph ?? '—');
+  }
+
+  function cancelDealAdvanceChain() {
+    if (dealAdvanceChainTid) {
+      clearTimeout(dealAdvanceChainTid);
+      dealAdvanceChainTid = null;
+    }
+  }
+
+  async function advanceDealViaRestOnce(steps) {
+    if (!app.tableId || !tokenForSeat(app.seat)) return false;
+    const r = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/deal_advance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ token: tokenForSeat(app.seat), steps: Math.min(20, Math.max(1, steps || 1)) }),
+    });
+    const jd = await r.json().catch(() => null);
+    if (r.ok && jd && jd.state) {
+      renderState(jd.state);
+      return true;
+    }
+    return false;
+  }
+
+  function scheduleDealAdvanceIfNeeded(st) {
+    cancelDealAdvanceChain();
+    if (!st || st.phase !== 'declare' || !app.tableId) return;
+    const cur = Number(st.deal_reveal_steps ?? 0);
+    const tot = Number(st.deal_total_steps ?? 0);
+    if (!Number.isFinite(cur) || !Number.isFinite(tot) || tot <= 0 || cur >= tot) return;
+    dealAdvanceChainTid = setTimeout(() => {
+      dealAdvanceChainTid = null;
+      const ls = app.lastState;
+      if (!ls || ls.phase !== 'declare' || !app.tableId) return;
+      const c2 = Number(ls.deal_reveal_steps ?? 0);
+      const t2 = Number(ls.deal_total_steps ?? 0);
+      if (c2 >= t2) return;
+      if (app.ws && app.ws.readyState === 1) {
+        try {
+          app.ws.send(JSON.stringify({ type: 'deal_advance', steps: 1 }));
+        } catch (_) {}
+      } else {
+        void advanceDealViaRestOnce(1);
+      }
+    }, DEAL_STAGGER_MS);
+  }
+
+  function formatDeclareHistLine(h) {
+    if (!h) return '';
+    if (h.kind === 'pass') return `座${h.seat} 过`;
+    if (h.kind === 'bid') {
+      const m = {
+        plain: '亮级',
+        pair: '对级',
+        sj: '+小王',
+        bj: '+大王',
+        nt: '无主',
+      };
+      const lab = m[h.bid_kind] || h.bid_kind;
+      const su = h.suit ? `${h.suit} ` : '';
+      return `座${h.seat} 叫 ${su}${lab}`;
+    }
+    if (h.kind === 'declare_done') {
+      const b = h.bury_card_count != null ? ` · 底${h.bury_card_count}张待扣` : '';
+      return `▼ 定局 庄 ${h.declarer_seat}${b}`;
+    }
+    if (h.kind === 'bury_done') return `座${h.seat} 已埋底`;
+    return escapeHtml(JSON.stringify(h));
+  }
+
   /** When declare or play for another seat — REST solo helper. */
   async function autoplayOthersIfNeeded() {
-    if (!chkAutoBot || !chkAutoBot.checked || botBusy || dealingInProgress || !app.tableId) return;
+    if (!chkAutoBot || !chkAutoBot.checked || botBusy || !app.tableId) return;
     const st = app.lastState;
     if (!st) return;
     if (st.phase === 'declare') {
@@ -306,7 +387,40 @@
       }
       return;
     }
-    if (!st || st.phase !== 'play') return;
+    if (st.phase === 'kitty') {
+      const bt = st.bury_to_act_seat;
+      if (bt === undefined || bt === null) return;
+      if (Number(bt) === Number(st.viewer_seat)) return;
+      const need = Number(st.kitty?.bury_needed ?? 0);
+      if (!Number.isFinite(need) || need <= 0) return;
+      botBusy = true;
+      try {
+        const tt = encodeURIComponent(tokenForSeat(bt));
+        const r = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}?token=${tt}`);
+        if (!r.ok) return;
+        const peer = await r.json();
+        const hand = peer.hands && peer.hands[bt];
+        if (!Array.isArray(hand)) return;
+        const ids = hand
+          .map((c) => cidKey(c.cid))
+          .filter((n) => n != null)
+          .sort((a, b) => a - b)
+          .slice(0, need);
+        if (ids.length !== need) return;
+        const r2 = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/bury`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ token: tokenForSeat(bt), card_ids: ids }),
+        });
+        if (r2.ok) await fetchStateRest();
+      } catch (_) {
+        /* ignore */
+      } finally {
+        botBusy = false;
+      }
+      return;
+    }
+    if (!st || st.phase !== 'play' || dealingInProgress) return;
     const actor = st.to_act_seat;
     if (actor === undefined || actor === null) return;
     if (Number(actor) === Number(st.viewer_seat)) return;
@@ -811,6 +925,7 @@
     let act = NaN;
     if (st.phase === 'play' && st.to_act_seat != null) act = Number(st.to_act_seat);
     else if (st.phase === 'declare' && st.declare_to_act_seat != null) act = Number(st.declare_to_act_seat);
+    else if (st.phase === 'kitty' && st.bury_to_act_seat != null) act = Number(st.bury_to_act_seat);
     board.querySelectorAll('.sb-seat').forEach((n) => {
       const s = Number(n.dataset.seat);
       const on = Number.isFinite(s) && Number.isFinite(act) && s === act;
@@ -876,8 +991,15 @@
     const stkPart = stk > 0 ? `累扣分 ${stk}` : null;
     const obPart =
       Number.isFinite(ob) && st.phase === 'declare' ? `原位庄座${ob}（叫到者当庄先出；全过则原位庄红心）` : null;
+    const curDeal = Number(st.deal_reveal_steps ?? 0);
+    const totDeal = Number(st.deal_total_steps ?? 0);
+    const dealPart =
+      st.phase === 'declare' && Number.isFinite(totDeal) && totDeal > 0
+        ? `发牌 ${Math.min(curDeal, totDeal)}/${totDeal}`
+        : null;
     const parts = [
-      `阶段 ${st.phase === 'declare' ? '叫主' : st.phase}`,
+      `阶段 ${phaseLabelZh(st.phase)}`,
+      dealPart,
       `庄 座${st.declarer_seat}`,
       `领出 座${st.leader}`,
       `主 ${tr.trump_suit == null ? '无主' : tr.trump_suit} · 级@${tr.level_rank}`,
@@ -893,17 +1015,31 @@
     if (!scoreBoard) return;
     const th = st.defenders_threshold ?? (st.num_players === 6 ? 120 : 80);
     const dr = Number(st.defender_trick_points_running ?? 0);
-    const kitty = st.kitty?.count ?? '—';
+    const kObj = st.kitty || {};
+    let kittyBrief = `${escapeHtml(String(kObj.count ?? '—'))} 张`;
+    if (st.phase === 'kitty') kittyBrief = `庄已拿底 · 待扣 <b>${escapeHtml(String(kObj.bury_needed ?? '—'))}</b> 张`;
+    else if (kObj.status === 'buried') kittyBrief = `${escapeHtml(String(kObj.count ?? '—'))} 张（已埋）`;
+
+    const turnLbl = st.phase === 'declare' ? '叫主' : st.phase === 'kitty' ? '埋底' : '出牌';
+    const turnSeat =
+      st.phase === 'declare' ? st.declare_to_act_seat : st.phase === 'kitty' ? st.bury_to_act_seat : st.to_act_seat;
+
+    const hist = st.declare_history || [];
+    const logBlock =
+      hist.length > 0
+        ? `<div class="declare-log muted small"><div class="lbl">叫牌记录</div><ol style="margin:6px 0 0;padding-left:1.1em">${hist
+            .map((h) => `<li>${formatDeclareHistLine(h)}</li>`)
+            .join('')}</ol></div>`
+        : '';
+
     const teams = `<div class="sb-rows">
       <div class="sb-row"><span class="lbl">队伍 A · 级</span><b>${escapeHtml(String(st.teams?.A ?? '?'))}</b></div>
       <div class="sb-row"><span class="lbl">队伍 B · 级</span><b>${escapeHtml(String(st.teams?.B ?? '?'))}</b></div>
       <div class="sb-row"><span class="lbl">闲家墩分（累计）</span><b>${dr}</b> <span class="muted">/ 目标 ${th}</span></div>
-      <div class="sb-row"><span class="lbl">底牌</span><span>${escapeHtml(String(kitty))} 张</span></div>
-      <div class="sb-row"><span class="lbl">${st.phase === 'declare' ? '叫主' : '出牌'}</span><span>轮到 座<b>${escapeHtml(
-        String((st.phase === 'declare' ? st.declare_to_act_seat : st.to_act_seat) ?? '—')
-      )}</b></span></div>
+      <div class="sb-row"><span class="lbl">底牌</span><span>${kittyBrief}</span></div>
+      <div class="sb-row"><span class="lbl">${turnLbl}</span><span>轮到 座<b>${escapeHtml(String(turnSeat ?? '—'))}</b></span></div>
       <div class="sb-row"><span class="lbl">叫主累扣分</span><span><b>${escapeHtml(String(Number(st.declare_stakes ?? 0)))}</b></span></div>
-    </div>`;
+    </div>${logBlock}`;
     let six = '';
     if (st.num_players === 6) {
       const fc = st.friend_calls || [];
@@ -1066,14 +1202,23 @@
       else hintSpan.textContent = `已匹配合法组合（${matchIds.length} 张），点「出牌」提交`;
     }
 
-    btnPlay.addEventListener('click', () => {
-      if (dealingInProgress || !myTurn) return;
-      const matchIds = findMatchingLegalCardIds(legalPlays, selectedPlayIds);
-      if (!matchIds) return;
-      submitPlayCardIds(matchIds);
-    });
+    if (!Array.isArray(mine)) {
+      row.textContent = '（暂无手牌）';
+      btnPlay.disabled = true;
+      hintSpan.textContent = '';
+      return;
+    }
 
-    if (!Array.isArray(mine) || !mine.length) {
+    if (!mine.length && st.phase === 'declare') {
+      title.textContent = '叫主 · 发牌中…';
+      btnPlay.disabled = true;
+      btnPlay.style.display = 'none';
+      hintSpan.textContent = '待发牌 · 仅能用已发到手中的牌参与叫主（与服务器同步）';
+      row.textContent = '（尚未发到本手）';
+      return;
+    }
+
+    if (!mine.length) {
       row.textContent = '（暂无手牌）';
       btnPlay.disabled = true;
       hintSpan.textContent = '';
@@ -1082,22 +1227,95 @@
 
     const sorted = sortHandForReveal(mine, st);
 
+    if (st.phase === 'kitty') {
+      btnPlay.onclick = null;
+      const buryNeed = Number(st.kitty?.bury_needed ?? 0);
+      const burySeat = Number(st.bury_to_act_seat ?? NaN);
+      const buryTurn = Number.isFinite(viewerNum) && Number.isFinite(burySeat) && viewerNum === burySeat;
+      title.textContent = `埋底 · 庄家请将 ${buryNeed} 张扣回底牌`;
+      btnPlay.textContent = '埋底';
+      btnPlay.style.display = '';
+      btnPlay.disabled = true;
+      if (!buryTurn) selectedPlayIds = [];
+
+      function updateBuryChrome() {
+        const ok = buryTurn && selectedPlayIds.length === buryNeed && buryNeed > 0;
+        btnPlay.disabled = !ok || dealingInProgress;
+        if (!buryTurn) hintSpan.textContent = `等待 座${burySeat}（庄家）埋底 · 须 ${buryNeed} 张`;
+        else if (!buryNeed) hintSpan.textContent = '';
+        else
+          hintSpan.textContent =
+            selectedPlayIds.length === buryNeed
+              ? `已选 ${buryNeed} 张，点「埋底」`
+              : `点选手牌恰好 ${buryNeed} 张作为新底（已选 ${selectedPlayIds.length}/${buryNeed}）`;
+      }
+
+      function applyBuryHighlights() {
+        const need = {};
+        selectedPlayIds.forEach((id) => {
+          need[id] = (need[id] || 0) + 1;
+        });
+        const seen = {};
+        row.querySelectorAll('.card-face').forEach((x) => {
+          const id = cidKey(x.dataset.pickCid);
+          if (id == null) return;
+          const n = need[id] || 0;
+          seen[id] = (seen[id] || 0) + 1;
+          x.classList.toggle('card-selected', n > 0 && seen[id] <= n);
+        });
+      }
+
+      btnPlay.onclick = () => {
+        if (dealingInProgress || !buryTurn || selectedPlayIds.length !== buryNeed) return;
+        submitBury(selectedPlayIds.slice());
+      };
+
+      row.innerHTML = '';
+      sorted.forEach((c) => {
+        const el = document.createElement('div');
+        const ck = cidKey(c.cid);
+        el.className = 'card-face' + (buryTurn ? ' playable' : ' dim');
+        el.dataset.pickCid = ck != null ? String(ck) : '';
+        applyCardFace(el, c);
+        el.title = (c.label || '') + ' · cid=' + c.cid;
+        if (buryTurn && ck != null) {
+          el.addEventListener('click', () => {
+            if (dealingInProgress) return;
+            const ix = selectedPlayIds.indexOf(ck);
+            if (ix >= 0) selectedPlayIds.splice(ix, 1);
+            else {
+              if (selectedPlayIds.length >= buryNeed) return;
+              selectedPlayIds.push(ck);
+            }
+            applyBuryHighlights();
+            updateBuryChrome();
+          });
+        }
+        row.appendChild(el);
+      });
+      applyBuryHighlights();
+      updateBuryChrome();
+      return;
+    }
+
     if (st.phase === 'declare') {
       const ld = legalDeclare || [];
-      title.textContent = '叫主 · 可多轮抬主扣分；叫到者庄先领出 · 无主须大王+小王';
+      title.textContent =
+        '叫主 · 发牌过程中可随时叫 · 仅能用手上已发出的牌 · 无主须大王+小王';
+      btnPlay.onclick = null;
       btnPlay.disabled = true;
       btnPlay.style.display = 'none';
       hintSpan.textContent = declareTurn
         ? ld.length > 1
-          ? '点下方动作（不须出牌）；「过」表示不叫'
-        : '仅可「过」'
-        : `等待其他家 · 叫到 座 ${st.declare_to_act_seat}`;
+          ? '点下方「过」或叫品；不须点手牌出牌'
+          : '仅可「过」'
+        : `等待其他家 · 轮到 座${st.declare_to_act_seat} 叫主`;
 
       const passBtn = document.createElement('button');
       passBtn.type = 'button';
       passBtn.className = 'btn primary tiny';
       passBtn.textContent = '过';
-      passBtn.disabled = !declareTurn || dealingInProgress;
+      passBtn.disabled = !declareTurn;
       passBtn.addEventListener('click', () => submitDeclare({ action: 'pass' }));
       bar.insertBefore(passBtn, hintSpan);
 
@@ -1128,49 +1346,30 @@
         b.type = 'button';
         b.className = 'btn ghost tiny';
         b.textContent = pay.action === 'bid_nt' ? '无主' : declareLabel(opt);
-        b.disabled = !declareTurn || dealingInProgress;
+        b.disabled = !declareTurn;
         b.addEventListener('click', () => submitDeclare(pay));
         bar.insertBefore(b, hintSpan);
       });
 
-      const shouldDecl =
-        epochKey !== dealAnimConsumedKey && !(st.completed_tricks || []).length && !(st.current_trick || []).length;
-      function paintDeclareRow(useStagger) {
-        row.innerHTML = '';
-        sorted.forEach((c, i) => {
-          const el = document.createElement('div');
-          el.className = 'card-face dim';
-          applyCardFace(el, c);
-          el.title = (c.label || '') + ' · cid=' + c.cid;
-          if (useStagger) el.style.opacity = '0';
-          row.appendChild(el);
-          if (useStagger) {
-            dealTimers.push(
-              setTimeout(() => {
-                el.style.opacity = '1';
-              }, i * DEAL_STAGGER_MS)
-            );
-          }
-        });
-        if (useStagger) {
-          cancelDealAnimation();
-          dealingInProgress = true;
-          dealOverlay?.classList.remove('hidden');
-          dealTimers.push(
-            setTimeout(() => {
-              dealingInProgress = false;
-              dealAnimConsumedKey = epochKey;
-              dealOverlay?.classList.add('hidden');
-            }, sorted.length * DEAL_STAGGER_MS + 120)
-          );
-        }
-      }
-
-      paintDeclareRow(!!shouldDecl);
+      row.innerHTML = '';
+      sorted.forEach((c) => {
+        const el = document.createElement('div');
+        el.className = 'card-face dim';
+        applyCardFace(el, c);
+        el.title = (c.label || '') + ' · cid=' + c.cid;
+        row.appendChild(el);
+      });
       return;
     }
 
     btnPlay.style.display = '';
+
+    btnPlay.onclick = () => {
+      if (dealingInProgress || !myTurn) return;
+      const matchIds = findMatchingLegalCardIds(legalPlays, selectedPlayIds);
+      if (!matchIds) return;
+      submitPlayCardIds(matchIds);
+    };
 
     function wirePick(el, c) {
       const ck = cidKey(c.cid);
@@ -1286,22 +1485,23 @@
     statusLine.textContent =
       st.phase === 'declare'
         ? `叫主 · 轮到 座${st.declare_to_act_seat} · 你在 座${viewerNum}` +
-          (declareTurn
-            ? dealingInProgress
-              ? ' — 发牌中…'
-              : ' — 点「过」或可调主花色 / 无主'
-            : '')
-        : st.phase === 'play'
-          ? `轮到 座${st.to_act_seat} · 你在 座${viewerNum}` +
-            (myTurn
-              ? dealingInProgress
-                ? ' — 发牌后可选手牌组成合法组合，再点出牌'
-                : ' — 多点组成合法组合后点「出牌」'
-              : dealingInProgress
-                ? ' — 发牌中…'
-                : ' — 等待')
-          : '本副已结束，可点「下一副」';
+          (declareTurn ? ' — 发牌进程中也可叫 · 仅能用手上已发到牌 · 见下方叫牌记录' : '')
+        : st.phase === 'kitty'
+          ? `埋底 · 庄 座${st.bury_to_act_seat ?? '—'} 扣 ${st.kitty?.bury_needed ?? '—'} 张 · 你在 座${viewerNum}` +
+            (Number(st.bury_to_act_seat) === viewerNum ? ' — 点选恰好张数后点「埋底」' : ' — 等待庄家埋底')
+          : st.phase === 'play'
+            ? `轮到 座${st.to_act_seat} · 你在 座${viewerNum}` +
+              (myTurn
+                ? dealingInProgress
+                  ? ' — 发牌后可选手牌组成合法组合，再点出牌'
+                  : ' — 多点组成合法组合后点「出牌」'
+                : dealingInProgress
+                  ? ' — 发牌中…'
+                  : ' — 等待')
+            : '本副已结束，可点「下一副」';
     eventLog.textContent = JSON.stringify(st, null, 2);
+    if (st.phase === 'scored') cancelDealAdvanceChain();
+    else scheduleDealAdvanceIfNeeded(st);
     setTimeout(() => {
       if (!dealingInProgress) void autoplayOthersIfNeeded();
     }, 0);
@@ -1373,6 +1573,40 @@
       return;
     }
     void postDeclare(extra);
+  }
+
+  async function postBury(cardIds) {
+    if (!app.tableId) return;
+    const ids = (cardIds || []).map((x) => Number(x)).filter((n) => !Number.isNaN(n));
+    const r = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/bury`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ token: tokenForSeat(app.seat), card_ids: ids }),
+    });
+    const jd = await r.json().catch(() => null);
+    if (r.ok && jd && jd.state) renderState(jd.state);
+    else {
+      const det = jd && (jd.detail || jd.message);
+      statusLine.textContent = `埋底失败: ${det ? JSON.stringify(det) : r.status}`;
+    }
+  }
+
+  function submitBury(cardIds) {
+    const st = app.lastState;
+    const v = Number(st?.viewer_seat);
+    const b = st && st.phase === 'kitty' && st.bury_to_act_seat != null ? Number(st.bury_to_act_seat) : NaN;
+    if (!st || st.phase !== 'kitty' || !Number.isFinite(v) || !Number.isFinite(b) || v !== b) {
+      statusLine.textContent = '埋底已过时…';
+      void fetchStateRest();
+      return;
+    }
+    const ids = (cardIds || []).map((x) => Number(x)).filter((n) => !Number.isNaN(n));
+    if (!ids.length) return;
+    if (app.ws && app.ws.readyState === 1) {
+      app.ws.send(JSON.stringify({ type: 'bury', card_ids: ids }));
+      return;
+    }
+    void postBury(ids);
   }
 
   async function postAction(cardIds) {

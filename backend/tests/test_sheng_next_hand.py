@@ -4,40 +4,10 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.sheng.tables import next_bank_declarer_seat
+from tests.conftest import sheng_rest_autoplay_until_scored, sheng_rest_bury_kitty, sheng_rest_finish_progressive_deal
 
 
 client = TestClient(app)
-
-
-def _autoplay_until_scored(tab: str, toks: dict[str, str]) -> None:
-    safety = 0
-    max_plays = 500
-    while safety < max_plays:
-        st_pub = client.get("/api/sheng/tables/" + tab, params={"token": toks["0"]}).json()
-        if st_pub["phase"] == "scored":
-            return
-        if st_pub["phase"] == "declare":
-            dseat = int(st_pub["declare_to_act_seat"])  # type: ignore[arg-type]
-            resp = client.post(
-                "/api/sheng/tables/" + tab + "/declare",
-                json={"token": toks[str(dseat)], "action": "pass"},
-            )
-            assert resp.status_code == 200, resp.text
-            safety += 1
-            continue
-        actor = int(st_pub["to_act_seat"])  # type: ignore[arg-type]
-        st = client.get(
-            "/api/sheng/tables/" + tab,
-            params={"token": toks[str(actor)]},
-        ).json()
-        ids = list(st["legal_plays"][0]["card_ids"])  # type: ignore[index]
-        resp = client.post(
-            "/api/sheng/tables/" + tab + "/actions",
-            json={"token": toks[str(actor)], "card_ids": ids},
-        )
-        assert resp.status_code == 200, resp.text
-        safety += 1
-    raise AssertionError("hand timed out")
 
 
 def test_next_bank_declarer_four_players_when_defenders_win() -> None:
@@ -58,7 +28,7 @@ def test_two_rest_hands_via_next_hand() -> None:
     table_id = data["table_id"]
     tokens = data["tokens"]
 
-    _autoplay_until_scored(table_id, tokens)
+    sheng_rest_autoplay_until_scored(client, table_id, tokens)
 
     r2 = client.post(
         "/api/sheng/tables/" + table_id + "/next_hand",
@@ -68,7 +38,8 @@ def test_two_rest_hands_via_next_hand() -> None:
     st = r2.json()["state"]
     assert st["phase"] == "declare"
     safety_d = 0
-    while st["phase"] == "declare" and safety_d < 20:
+    while st["phase"] == "declare" and safety_d < 60:
+        sheng_rest_finish_progressive_deal(client, table_id, tokens["0"])
         dseat = int(st["declare_to_act_seat"])  # type: ignore[arg-type]
         client.post(
             "/api/sheng/tables/" + table_id + "/declare",
@@ -76,11 +47,14 @@ def test_two_rest_hands_via_next_hand() -> None:
         ).raise_for_status()
         st = client.get("/api/sheng/tables/" + table_id, params={"token": tokens["0"]}).json()
         safety_d += 1
+    if st["phase"] == "kitty":
+        sheng_rest_bury_kitty(client, table_id, tokens)
+        st = client.get("/api/sheng/tables/" + table_id, params={"token": tokens["0"]}).json()
     assert st["phase"] == "play"
     assert st["leader"] == (int(st["declarer_seat"]) + 1) % int(st["num_players"])
     assert st.get("deal_epoch") == 2
 
-    _autoplay_until_scored(table_id, tokens)
+    sheng_rest_autoplay_until_scored(client, table_id, tokens)
 
 
 def test_next_hand_six_empty_friend_calls_stores_diagonal_mode() -> None:
@@ -102,7 +76,7 @@ def test_next_hand_six_empty_friend_calls_stores_diagonal_mode() -> None:
     tokens = data["tokens"]
     assert len(data["state_seat_0"]["friend_calls"]) == 2
 
-    _autoplay_until_scored(table_id, tokens)
+    sheng_rest_autoplay_until_scored(client, table_id, tokens)
 
     r2 = client.post(
         "/api/sheng/tables/" + table_id + "/next_hand",

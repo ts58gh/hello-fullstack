@@ -163,6 +163,24 @@ async def submit_declare(table_id: str, token: str, payload: dict[str, Any]) -> 
     return out
 
 
+async def submit_deal_advance(table_id: str, token: str, steps: int = 1) -> dict[str, Any]:
+    async with _lock_for(table_id):
+        room = get_room(table_id)
+        _ = find_seat_for_token(room, token)
+        events = room.hand.advance_deal_step(steps)
+    await _broadcast(table_id, events)
+    return {"events": events}
+
+
+async def submit_bury(table_id: str, token: str, card_ids: list[int]) -> dict[str, Any]:
+    async with _lock_for(table_id):
+        room = get_room(table_id)
+        seat = find_seat_for_token(room, token)
+        out = room.hand.bury_submit(seat, list(card_ids))
+    await _broadcast(table_id, out.get("events") or [])
+    return out
+
+
 async def submit_play(table_id: str, token: str, card_ids: list[int]) -> dict[str, Any]:
     async with _lock_for(table_id):
         room = get_room(table_id)

@@ -3,6 +3,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.conftest import sheng_rest_autoplay_until_scored, sheng_rest_finish_progressive_deal
 
 
 client = TestClient(app)
@@ -15,42 +16,17 @@ def test_sheng_rest_autoplay_four_players() -> None:
     table_id = data["table_id"]
     tokens = data["tokens"]
 
-    safety = 0
-    max_plays = 500
-    while safety < max_plays:
-        st_pub = client.get("/api/sheng/tables/" + table_id, params={"token": tokens["0"]}).json()
-        if st_pub["phase"] == "scored":
-            assert st_pub["hand_summary"] is not None
-            return
-        if st_pub["phase"] == "declare":
-            dseat = int(st_pub["declare_to_act_seat"])  # type: ignore[arg-type]
-            resp = client.post(
-                "/api/sheng/tables/" + table_id + "/declare",
-                json={"token": tokens[str(dseat)], "action": "pass"},
-            )
-            assert resp.status_code == 200, resp.text
-            safety += 1
-            continue
-        actor_seat = int(st_pub["to_act_seat"])  # type: ignore[arg-type]
-        st = client.get(
-            "/api/sheng/tables/" + table_id,
-            params={"token": tokens[str(actor_seat)]},
-        ).json()
-        ids = st["legal_plays"][0]["card_ids"]  # type: ignore[index]
-        resp = client.post(
-            "/api/sheng/tables/" + table_id + "/actions",
-            json={"token": tokens[str(actor_seat)], "card_ids": ids},
-        )
-        assert resp.status_code == 200, resp.text
-        safety += 1
-
-    raise AssertionError("hand did not finish")
+    sheng_rest_autoplay_until_scored(client, table_id, tokens)
 
 
 def test_view_card_objects_include_graphical_fields() -> None:
     r = client.post("/api/sheng/tables", json={"num_players": 4, "seed": 42})
     assert r.status_code == 200, r.text
-    st = r.json()["state_seat_0"]
+    data = r.json()
+    tid = data["table_id"]
+    toks = data["tokens"]
+    sheng_rest_finish_progressive_deal(client, tid, toks["0"])
+    st = client.get("/api/sheng/tables/" + tid, params={"token": toks["0"]}).json()
     assert st["phase"] == "declare"
     assert st.get("declare_to_act_seat") is not None
     c0 = st["hands"][0][0]

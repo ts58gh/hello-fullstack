@@ -61,10 +61,22 @@ def _defender_trick_points_running(rh: RunningHand) -> int:
 
 
 def serial_hands(room: ShengRoom, viewer: int) -> list[Any]:
-    """Own hand exposes full cards; opponents only expose counts."""
+    """Own hand exposes full cards during play/kitty/scored; opponents only counts.
 
+    During ``declare``, each seat only sees the progressively revealed subset (and
+    opponent counts match that subset).
+    """
+
+    rh = room.hand
     out: list[Any] = []
-    for seat, hz in enumerate(room.hand.hands):
+    for seat, hz in enumerate(rh.hands):
+        if rh.phase == "declare":
+            visible = rh._visible_cards(seat)
+            if seat == viewer:
+                out.append([_serialize_card(x) for x in visible])
+            else:
+                out.append({"count": len(visible)})
+            continue
         if seat == viewer:
             out.append([_serialize_card(x) for x in hz])
         else:
@@ -75,7 +87,16 @@ def serial_hands(room: ShengRoom, viewer: int) -> list[Any]:
 def view_for(room: ShengRoom, viewer: int) -> dict[str, Any]:
     rh = room.hand
 
-    kitty_public: dict[str, Any] = {"count": len(rh.kitty)}
+    if rh.phase == "declare":
+        kitty_public: dict[str, Any] = {"count": len(rh.kitty), "status": "table"}
+    elif rh.phase == "kitty":
+        kitty_public = {
+            "count": 0,
+            "status": "in_hand",
+            "bury_needed": rh.bury_card_count,
+        }
+    else:
+        kitty_public = {"count": len(rh.kitty), "status": "buried"}
 
     summary = None
     if rh.phase == "scored" and rh.result is not None:
@@ -116,6 +137,10 @@ def view_for(room: ShengRoom, viewer: int) -> dict[str, Any]:
         "declare_passes_since_change": rh.declare_passes_since_change if rh.phase == "declare" else None,
         "declare_best_key": list(rh.declare_best_key) if rh.phase == "declare" else None,
         "legal_declare": legal_declare,
+        "declare_history": list(rh.declare_history),
+        "deal_reveal_steps": rh.deal_reveal_steps,
+        "deal_total_steps": len(rh._deal_flat),
+        "bury_to_act_seat": rh.declarer_seat if rh.phase == "kitty" else None,
         "friend_calls": [_friend_call_pub(fc) for fc in room.friend_calls],
         "revealed_friend_seats": list(rh.revealed_friend_seats) if rh.num_players == 6 else [],
         "trump": {
