@@ -13,9 +13,9 @@ to their tally **only when a defender-seat player wins the last trick**.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
-from .cards import PhysCard, Suit, build_shoe, deal, shoe_size_for_players
+from .cards import JokerFace, PhysCard, RegularFace, Suit, build_shoe, deal, shoe_size_for_players
 from .combo_legal import combo_trick_winner_seat, legal_plays_for_turn
 from .friend import FriendCall, FriendPlayTracker
 from .scoring import (
@@ -64,13 +64,17 @@ class CompletedTrickRecord:
     plays: tuple[tuple[int, tuple[PhysCard, ...]], ...]
 
 
+DECLARE_SUIT_ORDER: dict[str, int] = {"C": 0, "D": 1, "H": 2, "S": 3}
+DECLARE_NT_STRENGTH = 4
+
+
 @dataclass
 class RunningHand:
     num_players: int
     seed: int | None
     declarer_seat: int
     match_level_rank: int
-    trump_suit: Suit
+    trump_suit: Suit | None
     hands: list[list[PhysCard]]
     kitty: list[PhysCard]
     trump: TrumpContext
@@ -81,7 +85,10 @@ class RunningHand:
     friend_calls: tuple[FriendCall, ...] = ()
     _completed_tricks: list[CompletedTrickRecord] = field(default_factory=list, repr=False)
     _revealed_friend_seats: set[int] = field(default_factory=set, repr=False)
-    phase: Literal["play", "scored"] = "play"
+    declare_to_act_seat: int = 0
+    declare_passes_since_change: int = 0
+    declare_best_strength: int = -1
+    phase: Literal["declare", "play", "scored"] = "declare"
     result: HandResult | None = None
 
     @property
@@ -98,7 +105,6 @@ class RunningHand:
         seed: int | None = None,
         declarer_seat: int = 0,
         match_level_rank: int = 5,
-        trump_suit: Suit = Suit.HEARTS,
         friend_calls: tuple[FriendCall, ...] = (),
     ) -> "RunningHand":
         if num_players not in (4, 6):
@@ -106,23 +112,30 @@ class RunningHand:
         nd = shoe_size_for_players(num_players)
         shoe = build_shoe(nd)
         hands_t, kitty = deal(shoe, num_players, seed=seed)
-        trump = TrumpContext(level_rank=match_level_rank, trump_suit=trump_suit)
+        # Provisional hearts until declare ends (all-pass → Hearts); bid may set suit or NT.
+        provisional = Suit.HEARTS
+        trump = TrumpContext(level_rank=match_level_rank, trump_suit=provisional)
         fc_tuple = tuple(friend_calls)
         tracker = FriendPlayTracker(fc_tuple) if fc_tuple else None
         base = declarer_seat % num_players
         leader = (base + 1) % num_players
+        declare_open = leader
         return cls(
             num_players=num_players,
             seed=seed,
             declarer_seat=base,
             match_level_rank=match_level_rank,
-            trump_suit=trump_suit,
+            trump_suit=provisional,
             hands=list(map(list, hands_t)),
             kitty=list(kitty),
             trump=trump,
             leader=leader,
             friend_tracker=tracker,
             friend_calls=fc_tuple,
+            declare_to_act_seat=declare_open,
+            declare_passes_since_change=0,
+            declare_best_strength=-1,
+            phase="declare",
         )
 
     def _take_cards_ordered(self, seat: int, cid_order: list[int]) -> tuple[PhysCard, ...]:
@@ -136,6 +149,99 @@ class RunningHand:
                 raise ValueError("card not in hand")
             drawn.append(hand.pop(idx))
         return tuple(drawn)
+
+    def _declare_suit_strength(self, suit: Suit) -> int:
+        return DECLARE_SUIT_ORDER[suit.value]
+
+    def _hand_has_level_card_in_suit(self, seat: int, suit: Suit) -> bool:
+        for c in self.hands[seat]:
+            face = c.face
+            if isinstance(face, RegularFace) and face.rank == self.match_level_rank and face.suit == suit:
+                return True
+        return False
+
+    def _hand_has_both_jokers(self, seat: int) -> bool:
+        sj = bj = False
+        for c in self.hands[seat]:
+            if isinstance(c.face, JokerFace):
+                if c.face.big:
+                    bj = True
+                else:
+                    sj = True
+            if sj and bj:
+                return True
+        return False
+
+    def legal_declare_options(self, seat: int) -> list[dict[str, Any]]:
+        if self.phase != "declare" or seat != self.declare_to_act_seat:
+            return []
+        out: list[dict[str, Any]] = [{"kind": "pass"}]
+        b = self.declare_best_strength
+        for suit in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
+            strength = self._declare_suit_strength(suit)
+            if strength > b and self._hand_has_level_card_in_suit(seat, suit):
+                out.append({"kind": "bid_suit", "suit": suit.value})
+        if DECLARE_NT_STRENGTH > b and self._hand_has_both_jokers(seat):
+            out.append({"kind": "bid_nt"})
+        return out
+
+    def _finish_declare_phase(self, events_out: list[dict[str, Any]]) -> None:
+        if self.phase != "declare":
+            return
+        if self.declare_best_strength < 0:
+            self.trump_suit = Suit.HEARTS
+            self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=Suit.HEARTS)
+        self.phase = "play"
+        ts = None if self.trump_suit is None else self.trump_suit.value
+        events_out.append({"type": "declare_done", "trump_suit": ts})
+
+    def declare_submit(self, seat: int, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.phase != "declare":
+            raise ValueError("not in declare phase")
+        if seat != self.declare_to_act_seat:
+            raise PermissionError("not your turn to declare")
+
+        raw = payload.get("action") or payload.get("kind") or ""
+        action = str(raw).lower().replace("-", "_")
+        events: list[dict[str, Any]] = []
+
+        if action in ("pass",):
+            self.declare_passes_since_change += 1
+            events.append({"type": "declare_pass", "seat": seat})
+        elif action in ("bid_suit", "suit"):
+            suit_v = payload.get("suit")
+            if suit_v is None:
+                raise ValueError("suit required for bid_suit")
+            suit = Suit(str(suit_v))
+            strength = self._declare_suit_strength(suit)
+            if strength <= self.declare_best_strength:
+                raise ValueError("bid does not beat current main")
+            if not self._hand_has_level_card_in_suit(seat, suit):
+                raise ValueError("no playable level-card in this suit")
+            self.declare_best_strength = strength
+            self.trump_suit = suit
+            self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
+            self.declare_passes_since_change = 0
+            events.append({"type": "declare_bid", "seat": seat, "trump_suit": suit.value, "bid_kind": "suit"})
+        elif action in ("bid_nt", "nt", "no_trump"):
+            if DECLARE_NT_STRENGTH <= self.declare_best_strength:
+                raise ValueError("bid does not beat current main")
+            if not self._hand_has_both_jokers(seat):
+                raise ValueError("无主 requires big and small joker in hand")
+            self.declare_best_strength = DECLARE_NT_STRENGTH
+            self.trump_suit = None
+            self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=None)
+            self.declare_passes_since_change = 0
+            events.append({"type": "declare_bid", "seat": seat, "trump_suit": None, "bid_kind": "nt"})
+        else:
+            raise ValueError("unknown declare action")
+
+        if self.declare_passes_since_change >= self.num_players:
+            self._finish_declare_phase(events)
+        else:
+            self.declare_to_act_seat = (self.declare_to_act_seat + 1) % self.num_players
+
+        return {"events": events}
 
     def legal_combo_plays(self, seat: int) -> list[list[PhysCard]]:
         if self.phase != "play" or seat != self._to_act():
@@ -165,7 +271,7 @@ class RunningHand:
 
     def play_cards(self, seat: int, card_ids: list[int]) -> dict:
         if self.phase != "play":
-            raise ValueError("hand already scored")
+            raise ValueError("not in play phase")
         if seat != self._to_act():
             raise PermissionError("not your turn")
         if not card_ids:

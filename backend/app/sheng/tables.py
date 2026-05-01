@@ -154,6 +154,15 @@ async def create_room(
     return room, toks
 
 
+async def submit_declare(table_id: str, token: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async with _lock_for(table_id):
+        room = get_room(table_id)
+        seat = find_seat_for_token(room, token)
+        out = room.hand.declare_submit(seat, payload)
+    await _broadcast(table_id, out.get("events") or [])
+    return out
+
+
 async def submit_play(table_id: str, token: str, card_ids: list[int]) -> dict[str, Any]:
     async with _lock_for(table_id):
         room = get_room(table_id)

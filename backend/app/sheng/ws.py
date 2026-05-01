@@ -130,6 +130,18 @@ async def _handle_message(
     if mtype == "ping":
         await ws.send_json({"type": "pong"})
         return
+    if mtype == "declare":
+        try:
+            act = msg.get("action")
+            if not isinstance(act, str):
+                raise ValueError("declare.action required")
+            payload: dict[str, Any] = {"action": act}
+            if msg.get("suit") is not None:
+                payload["suit"] = str(msg["suit"])
+            await sheng_tables.submit_declare(table_id, token, payload)
+        except (ValueError, KeyError, PermissionError, TypeError) as e:
+            await ws.send_json({"type": "error", "message": str(e)})
+        return
     if mtype == "action":
         try:
             raw_ids = msg.get("card_ids")

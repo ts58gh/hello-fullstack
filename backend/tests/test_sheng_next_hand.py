@@ -11,11 +11,20 @@ client = TestClient(app)
 
 def _autoplay_until_scored(tab: str, toks: dict[str, str]) -> None:
     safety = 0
-    max_plays = 400
+    max_plays = 500
     while safety < max_plays:
         st_pub = client.get("/api/sheng/tables/" + tab, params={"token": toks["0"]}).json()
         if st_pub["phase"] == "scored":
             return
+        if st_pub["phase"] == "declare":
+            dseat = int(st_pub["declare_to_act_seat"])  # type: ignore[arg-type]
+            resp = client.post(
+                "/api/sheng/tables/" + tab + "/declare",
+                json={"token": toks[str(dseat)], "action": "pass"},
+            )
+            assert resp.status_code == 200, resp.text
+            safety += 1
+            continue
         actor = int(st_pub["to_act_seat"])  # type: ignore[arg-type]
         st = client.get(
             "/api/sheng/tables/" + tab,
@@ -57,6 +66,16 @@ def test_two_rest_hands_via_next_hand() -> None:
     )
     assert r2.status_code == 200, r2.text
     st = r2.json()["state"]
+    assert st["phase"] == "declare"
+    safety_d = 0
+    while st["phase"] == "declare" and safety_d < 20:
+        dseat = int(st["declare_to_act_seat"])  # type: ignore[arg-type]
+        client.post(
+            "/api/sheng/tables/" + table_id + "/declare",
+            json={"token": tokens[str(dseat)], "action": "pass"},
+        ).raise_for_status()
+        st = client.get("/api/sheng/tables/" + table_id, params={"token": tokens["0"]}).json()
+        safety_d += 1
     assert st["phase"] == "play"
     assert st["leader"] == (int(st["declarer_seat"]) + 1) % int(st["num_players"])
     assert st.get("deal_epoch") == 2

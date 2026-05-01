@@ -65,6 +65,17 @@ class NextHandResponse(BaseModel):
     state: dict[str, Any]
 
 
+class DeclareBody(BaseModel):
+    token: str = Field(..., min_length=4)
+    action: Literal["pass", "bid_suit", "bid_nt"]
+    suit: Optional[Literal["C", "D", "H", "S"]] = None
+
+
+class DeclareResponse(BaseModel):
+    events: list[dict[str, Any]]
+    state: dict[str, Any]
+
+
 @router.post("/tables", response_model=CreateTableResponse)
 async def create_table(body: Optional[CreateTableBody] = None) -> CreateTableResponse:
     b = body or CreateTableBody()
@@ -94,6 +105,27 @@ async def create_table(body: Optional[CreateTableBody] = None) -> CreateTableRes
         tokens=tok_str,
         state_seat_0=view_for(room, 0),
     )
+
+
+@router.post("/tables/{table_id}/declare", response_model=DeclareResponse)
+async def post_declare(table_id: str, body: DeclareBody) -> DeclareResponse:
+    payload: dict[str, Any] = {"action": body.action}
+    if body.action == "bid_suit":
+        if body.suit is None:
+            raise HTTPException(status_code=400, detail="suit required for bid_suit")
+        payload["suit"] = body.suit
+    try:
+        out = await tables.submit_declare(table_id, body.token, payload)
+        room = tables.get_room(table_id)
+        seat = tables.find_seat_for_token(room, body.token)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="table not found") from None
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="invalid token") from None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+    return DeclareResponse(events=out.get("events") or [], state=view_for(room, seat))
 
 
 @router.get("/tables/{table_id}")

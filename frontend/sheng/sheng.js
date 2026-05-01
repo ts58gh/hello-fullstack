@@ -282,10 +282,30 @@
     return app.tokens[String(s)] || '';
   }
 
-  /** When it is another seat's turn, play their first legal card via REST so one human can solo the table. */
+  /** When declare or play for another seat — REST solo helper. */
   async function autoplayOthersIfNeeded() {
     if (!chkAutoBot || !chkAutoBot.checked || botBusy || dealingInProgress || !app.tableId) return;
     const st = app.lastState;
+    if (!st) return;
+    if (st.phase === 'declare') {
+      const ds = st.declare_to_act_seat;
+      if (ds === undefined || ds === null) return;
+      if (Number(ds) === Number(st.viewer_seat)) return;
+      botBusy = true;
+      try {
+        await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/declare`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ token: tokenForSeat(ds), action: 'pass' }),
+        });
+        await fetchStateRest();
+      } catch (_) {
+        /* ignore */
+      } finally {
+        botBusy = false;
+      }
+      return;
+    }
     if (!st || st.phase !== 'play') return;
     const actor = st.to_act_seat;
     if (actor === undefined || actor === null) return;
@@ -788,10 +808,12 @@
 
   function updateSeatActingHighlight(st) {
     if (!board) return;
-    const act = st?.to_act_seat != null ? Number(st.to_act_seat) : NaN;
+    let act = NaN;
+    if (st.phase === 'play' && st.to_act_seat != null) act = Number(st.to_act_seat);
+    else if (st.phase === 'declare' && st.declare_to_act_seat != null) act = Number(st.declare_to_act_seat);
     board.querySelectorAll('.sb-seat').forEach((n) => {
       const s = Number(n.dataset.seat);
-      const on = st.phase === 'play' && Number.isFinite(s) && Number.isFinite(act) && s === act;
+      const on = Number.isFinite(s) && Number.isFinite(act) && s === act;
       n.classList.toggle('sb-seat--acting', !!on);
     });
   }
@@ -847,10 +869,10 @@
     if (!metaBar) return;
     const tr = st.trump || {};
     metaBar.textContent = [
-      `阶段 ${st.phase}`,
+      `阶段 ${st.phase === 'declare' ? '叫主' : st.phase}`,
       `庄 座${st.declarer_seat}`,
       `领出 座${st.leader}`,
-      `主 ${tr.trump_suit || '?'} @${tr.level_rank}`,
+      `主 ${tr.trump_suit == null ? '无主' : tr.trump_suit} · 级@${tr.level_rank}`,
       `台面 A${st.teams?.A} / B${st.teams?.B}`,
       `已完墩 ${(st.completed_tricks || []).length}`,
     ].join(' · ');
@@ -866,7 +888,9 @@
       <div class="sb-row"><span class="lbl">队伍 B · 级</span><b>${escapeHtml(String(st.teams?.B ?? '?'))}</b></div>
       <div class="sb-row"><span class="lbl">闲家墩分（累计）</span><b>${dr}</b> <span class="muted">/ 目标 ${th}</span></div>
       <div class="sb-row"><span class="lbl">底牌</span><span>${escapeHtml(String(kitty))} 张</span></div>
-      <div class="sb-row"><span class="lbl">出牌序</span><span>轮到 座<b>${escapeHtml(String(st.to_act_seat ?? '—'))}</b></span></div>
+      <div class="sb-row"><span class="lbl">${st.phase === 'declare' ? '叫主' : '出牌'}</span><span>轮到 座<b>${escapeHtml(
+        String((st.phase === 'declare' ? st.declare_to_act_seat : st.to_act_seat) ?? '—')
+      )}</b></span></div>
     </div>`;
     let six = '';
     if (st.num_players === 6) {
@@ -957,7 +981,7 @@
     selectedPlayIds = next;
   }
 
-  function renderMyHand(st, myTurn, legalPlays) {
+  function renderMyHand(st, myTurn, legalPlays, declareTurn, legalDeclare) {
     if (!myHandDock) return;
     const legalUnion = unionLegalTouchIds(legalPlays);
     const viewerNum = Number(st.viewer_seat);
@@ -1044,6 +1068,88 @@
       return;
     }
 
+    const sorted = sortHandForReveal(mine, st);
+
+    if (st.phase === 'declare') {
+      const ld = legalDeclare || [];
+      title.textContent = '叫主 · 用手中级牌亮花主 · 或无主(须双王)';
+      btnPlay.disabled = true;
+      btnPlay.style.display = 'none';
+      hintSpan.textContent = declareTurn
+        ? ld.length > 1
+          ? '点下方动作（不须出牌）；「过」表示不叫'
+        : '仅可「过」'
+        : `等待其他家 · 叫到 座 ${st.declare_to_act_seat}`;
+
+      const passBtn = document.createElement('button');
+      passBtn.type = 'button';
+      passBtn.className = 'btn primary tiny';
+      passBtn.textContent = '过';
+      passBtn.disabled = !declareTurn || dealingInProgress;
+      passBtn.addEventListener('click', () => submitDeclare({ action: 'pass' }));
+      bar.insertBefore(passBtn, hintSpan);
+
+      const suitNames = { C: '♣ 梅', D: '♦ 方', H: '♥ 红', S: '♠ 黑' };
+      ld.forEach((opt) => {
+        if (!opt || opt.kind === 'pass') return;
+        if (opt.kind === 'bid_suit') {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'btn ghost tiny';
+          b.textContent = suitNames[opt.suit] || opt.suit;
+          b.disabled = !declareTurn || dealingInProgress;
+          b.addEventListener('click', () => submitDeclare({ action: 'bid_suit', suit: opt.suit }));
+          bar.insertBefore(b, hintSpan);
+        } else if (opt.kind === 'bid_nt') {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'btn ghost tiny';
+          b.textContent = '无主';
+          b.disabled = !declareTurn || dealingInProgress;
+          b.addEventListener('click', () => submitDeclare({ action: 'bid_nt' }));
+          bar.insertBefore(b, hintSpan);
+        }
+      });
+
+      const shouldDecl =
+        epochKey !== dealAnimConsumedKey && !(st.completed_tricks || []).length && !(st.current_trick || []).length;
+      function paintDeclareRow(useStagger) {
+        row.innerHTML = '';
+        sorted.forEach((c, i) => {
+          const el = document.createElement('div');
+          el.className = 'card-face dim';
+          applyCardFace(el, c);
+          el.title = (c.label || '') + ' · cid=' + c.cid;
+          if (useStagger) el.style.opacity = '0';
+          row.appendChild(el);
+          if (useStagger) {
+            dealTimers.push(
+              setTimeout(() => {
+                el.style.opacity = '1';
+              }, i * DEAL_STAGGER_MS)
+            );
+          }
+        });
+        if (useStagger) {
+          cancelDealAnimation();
+          dealingInProgress = true;
+          dealOverlay?.classList.remove('hidden');
+          dealTimers.push(
+            setTimeout(() => {
+              dealingInProgress = false;
+              dealAnimConsumedKey = epochKey;
+              dealOverlay?.classList.add('hidden');
+            }, sorted.length * DEAL_STAGGER_MS + 120)
+          );
+        }
+      }
+
+      paintDeclareRow(!!shouldDecl);
+      return;
+    }
+
+    btnPlay.style.display = '';
+
     function wirePick(el, c) {
       const ck = cidKey(c.cid);
       if (ck == null) return;
@@ -1063,7 +1169,6 @@
       });
     }
 
-    const sorted = sortHandForReveal(mine, st);
     const shouldStagger =
       st.phase === 'play' && epochKey !== dealAnimConsumedKey && !tricking;
 
@@ -1132,7 +1237,11 @@
     const myTurn =
       st.phase === 'play' && Number.isFinite(viewerNum) && Number.isFinite(actNum) && viewerNum === actNum;
 
-    renderMyHand(st, myTurn, legal);
+    const dAct = st.declare_to_act_seat != null ? Number(st.declare_to_act_seat) : NaN;
+    const declareTurn =
+      st.phase === 'declare' && Number.isFinite(viewerNum) && Number.isFinite(dAct) && viewerNum === dAct;
+
+    renderMyHand(st, myTurn, legal, declareTurn, st.legal_declare || []);
 
     if (st.phase === 'scored') {
       btnNext.classList.remove('hidden');
@@ -1149,16 +1258,23 @@
     }
 
     statusLine.textContent =
-      st.phase === 'play'
-        ? `轮到 座${st.to_act_seat} · 你在 座${viewerNum}` +
-          (myTurn
+      st.phase === 'declare'
+        ? `叫主 · 轮到 座${st.declare_to_act_seat} · 你在 座${viewerNum}` +
+          (declareTurn
             ? dealingInProgress
-              ? ' — 发牌后可选手牌组成合法组合，再点出牌'
-              : ' — 多点组成合法组合后点「出牌」'
-            : dealingInProgress
               ? ' — 发牌中…'
-              : ' — 等待')
-        : '本副已结束，可点「下一副」';
+              : ' — 点「过」或可调主花色 / 无主'
+            : '')
+        : st.phase === 'play'
+          ? `轮到 座${st.to_act_seat} · 你在 座${viewerNum}` +
+            (myTurn
+              ? dealingInProgress
+                ? ' — 发牌后可选手牌组成合法组合，再点出牌'
+                : ' — 多点组成合法组合后点「出牌」'
+              : dealingInProgress
+                ? ' — 发牌中…'
+                : ' — 等待')
+          : '本副已结束，可点「下一副」';
     eventLog.textContent = JSON.stringify(st, null, 2);
     setTimeout(() => {
       if (!dealingInProgress) void autoplayOthersIfNeeded();
@@ -1197,6 +1313,40 @@
       return;
     }
     void postAction(ids);
+  }
+
+  async function postDeclare(extra) {
+    if (!app.tableId) return;
+    const r = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/declare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ token: tokenForSeat(app.seat), ...extra }),
+    });
+    const jd = await r.json().catch(() => null);
+    if (r.ok && jd && jd.state) renderState(jd.state);
+    else {
+      const det = jd && (jd.detail || jd.message);
+      statusLine.textContent = `叫主失败: ${det ? JSON.stringify(det) : r.status}`;
+    }
+  }
+
+  function submitDeclare(extra) {
+    const st = app.lastState;
+    const v = Number(st?.viewer_seat);
+    const d =
+      st && st.declare_to_act_seat != null && st.phase === 'declare' ? Number(st.declare_to_act_seat) : NaN;
+    if (!st || st.phase !== 'declare' || !Number.isFinite(v) || !Number.isFinite(d) || v !== d) {
+      statusLine.textContent = '叫主已过时…';
+      void fetchStateRest();
+      return;
+    }
+    const msg = { type: 'declare', action: extra.action };
+    if (extra.suit) msg.suit = extra.suit;
+    if (app.ws && app.ws.readyState === 1) {
+      app.ws.send(JSON.stringify(msg));
+      return;
+    }
+    void postDeclare(extra);
   }
 
   async function postAction(cardIds) {

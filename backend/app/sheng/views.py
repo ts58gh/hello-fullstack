@@ -97,6 +97,10 @@ def view_for(room: ShengRoom, viewer: int) -> dict[str, Any]:
     if rh.phase == "play" and viewer == rh._to_act():
         legal = [_legal_option_pub(rh.trump, cards) for cards in rh.legal_combo_plays(viewer)]
 
+    legal_declare: list[dict[str, Any]] = []
+    if rh.phase == "declare":
+        legal_declare = rh.legal_declare_options(viewer)
+
     return {
         "table_id": room.id,
         "game": "sheng",
@@ -105,11 +109,14 @@ def view_for(room: ShengRoom, viewer: int) -> dict[str, Any]:
         "num_players": room.num_players,
         "declarer_seat": rh.declarer_seat,
         "bank_declarer_seat": room.bank_declarer_seat,
+        "declare_to_act_seat": rh.declare_to_act_seat if rh.phase == "declare" else None,
+        "declare_passes_since_change": rh.declare_passes_since_change if rh.phase == "declare" else None,
+        "legal_declare": legal_declare,
         "friend_calls": [_friend_call_pub(fc) for fc in room.friend_calls],
         "revealed_friend_seats": list(rh.revealed_friend_seats) if rh.num_players == 6 else [],
         "trump": {
             "level_rank": rh.match_level_rank,
-            "trump_suit": rh.trump_suit.value if rh.trump_suit else None,
+            "trump_suit": rh.trump_suit.value if rh.trump_suit is not None else None,
         },
         "leader": rh.leader,
         "current_trick": current_trick,

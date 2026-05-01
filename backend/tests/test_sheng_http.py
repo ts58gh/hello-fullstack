@@ -16,12 +16,21 @@ def test_sheng_rest_autoplay_four_players() -> None:
     tokens = data["tokens"]
 
     safety = 0
-    max_plays = 300
+    max_plays = 500
     while safety < max_plays:
         st_pub = client.get("/api/sheng/tables/" + table_id, params={"token": tokens["0"]}).json()
         if st_pub["phase"] == "scored":
             assert st_pub["hand_summary"] is not None
             return
+        if st_pub["phase"] == "declare":
+            dseat = int(st_pub["declare_to_act_seat"])  # type: ignore[arg-type]
+            resp = client.post(
+                "/api/sheng/tables/" + table_id + "/declare",
+                json={"token": tokens[str(dseat)], "action": "pass"},
+            )
+            assert resp.status_code == 200, resp.text
+            safety += 1
+            continue
         actor_seat = int(st_pub["to_act_seat"])  # type: ignore[arg-type]
         st = client.get(
             "/api/sheng/tables/" + table_id,
@@ -42,6 +51,8 @@ def test_view_card_objects_include_graphical_fields() -> None:
     r = client.post("/api/sheng/tables", json={"num_players": 4, "seed": 42})
     assert r.status_code == 200, r.text
     st = r.json()["state_seat_0"]
+    assert st["phase"] == "declare"
+    assert st.get("declare_to_act_seat") is not None
     c0 = st["hands"][0][0]
     assert c0.get("kind") == "regular"
     assert c0.get("suit") in ("C", "D", "H", "S")
