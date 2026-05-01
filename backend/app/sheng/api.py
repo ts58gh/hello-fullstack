@@ -67,7 +67,7 @@ class NextHandResponse(BaseModel):
 
 class DeclareBody(BaseModel):
     token: str = Field(..., min_length=4)
-    action: Literal["pass", "bid_plain", "bid_suit", "bid_sj", "bid_suit_sj", "bid_bj", "bid_suit_bj", "bid_pair", "bid_nt"]
+    action: Literal["pass", "bid_plain", "bid_suit", "bid_pair", "bid_nt"]
     suit: Optional[Literal["C", "D", "H", "S"]] = None
 
 
@@ -130,7 +130,7 @@ async def create_table(body: Optional[CreateTableBody] = None) -> CreateTableRes
 @router.post("/tables/{table_id}/declare", response_model=DeclareResponse)
 async def post_declare(table_id: str, body: DeclareBody) -> DeclareResponse:
     payload: dict[str, Any] = {"action": body.action}
-    if body.action in ("bid_suit", "bid_plain", "bid_sj", "bid_suit_sj", "bid_bj", "bid_suit_bj", "bid_pair"):
+    if body.action in ("bid_suit", "bid_plain", "bid_pair"):
         if body.suit is None:
             raise HTTPException(status_code=400, detail="suit required for this bid action")
         payload["suit"] = body.suit

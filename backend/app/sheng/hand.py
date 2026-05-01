@@ -80,14 +80,12 @@ class CompletedTrickRecord:
 
 
 DECLARE_SUIT_ORDER: dict[str, int] = {"C": 0, "D": 1, "H": 2, "S": 3}
-# Suited keys use (tier, suit_ordinal). NT is top. Same tier: higher suit ordinal wins.
+# Suited keys use (tier, suit_ordinal): 亮级 < 对级 < 无主 NT.
 _DECLARE_TIER_PLAIN = 550
-_DECLARE_TIER_SJ = 620
-_DECLARE_TIER_BJ = 690
 _DECLARE_TIER_PAIR = 760
 DECLARE_NT_KEY: tuple[int, ...] = (900,)
 
-_DECLARE_LINE_STAKE = {"plain": 6, "sj": 14, "bj": 22, "pair": 32, "nt": 42}
+_DECLARE_LINE_STAKE = {"plain": 6, "pair": 32, "nt": 42}
 _DECLARE_ANTI_EACH = 8  # 反主加收：压过上一轮叫品时记入闲家加成
 
 
@@ -270,12 +268,6 @@ class RunningHand:
     def _key_plain(self, suit: Suit) -> tuple[int, ...]:
         return (_DECLARE_TIER_PLAIN, self._declare_suit_strength(suit))
 
-    def _key_sj(self, suit: Suit) -> tuple[int, ...]:
-        return (_DECLARE_TIER_SJ, self._declare_suit_strength(suit))
-
-    def _key_bj(self, suit: Suit) -> tuple[int, ...]:
-        return (_DECLARE_TIER_BJ, self._declare_suit_strength(suit))
-
     def _key_pair(self, suit: Suit) -> tuple[int, ...]:
         return (_DECLARE_TIER_PAIR, self._declare_suit_strength(suit))
 
@@ -324,14 +316,8 @@ class RunningHand:
             if lc >= 2 and self._key_pair(suit) > bk:
                 out.append({"kind": "bid_pair", "suit": suit.value})
             if lc >= 1:
-                has_sj = RunningHand._pile_has_sj(mat)
-                has_bj = RunningHand._pile_has_bj(mat)
                 if self._key_plain(suit) > bk:
                     out.append({"kind": "bid_plain", "suit": suit.value})
-                if has_sj and self._key_sj(suit) > bk:
-                    out.append({"kind": "bid_sj", "suit": suit.value})
-                if has_bj and self._key_bj(suit) > bk:
-                    out.append({"kind": "bid_bj", "suit": suit.value})
         if RunningHand._pile_has_both_jokers(mat) and DECLARE_NT_KEY > bk:
             out.append({"kind": "bid_nt"})
         return out
@@ -405,30 +391,8 @@ class RunningHand:
             self.trump_suit = suit
             self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
             self.declare_history.append({"kind": "bid", "seat": seat, "bid_kind": "plain", "suit": suit.value})
-        elif action in ("bid_sj", "bid_suit_sj"):
-            suit_v = payload.get("suit")
-            if suit_v is None:
-                raise ValueError("suit required")
-            suit = Suit(str(suit_v))
-            if not self._hand_has_level_card_in_suit_from(mat, suit) or not RunningHand._pile_has_sj(mat):
-                raise ValueError("needs level card + small joker")
-            nk = self._key_sj(suit)
-            self._apply_winning_declare(seat, nk, "sj", events, trump_suit=suit.value, bid_kind="sj")
-            self.trump_suit = suit
-            self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
-            self.declare_history.append({"kind": "bid", "seat": seat, "bid_kind": "sj", "suit": suit.value})
-        elif action in ("bid_bj", "bid_suit_bj"):
-            suit_v = payload.get("suit")
-            if suit_v is None:
-                raise ValueError("suit required")
-            suit = Suit(str(suit_v))
-            if not self._hand_has_level_card_in_suit_from(mat, suit) or not RunningHand._pile_has_bj(mat):
-                raise ValueError("needs level card + big joker")
-            nk = self._key_bj(suit)
-            self._apply_winning_declare(seat, nk, "bj", events, trump_suit=suit.value, bid_kind="bj")
-            self.trump_suit = suit
-            self.trump = TrumpContext(level_rank=self.match_level_rank, trump_suit=suit)
-            self.declare_history.append({"kind": "bid", "seat": seat, "bid_kind": "bj", "suit": suit.value})
+        elif action in ("bid_sj", "bid_suit_sj", "bid_bj", "bid_suit_bj"):
+            raise ValueError("花色+王牌叫牌已关闭")
         elif action in ("bid_pair",):
             suit_v = payload.get("suit")
             if suit_v is None:

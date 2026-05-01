@@ -347,8 +347,6 @@
       const m = {
         plain: '亮级',
         pair: '对级',
-        sj: '+小王',
-        bj: '+大王',
         nt: '无主',
       };
       const lab = m[h.bid_kind] || h.bid_kind;
@@ -1325,8 +1323,6 @@
         if (opt.kind === 'bid_plain' || opt.kind === 'bid_suit')
           return { action: 'bid_plain', suit: opt.suit };
         if (opt.kind === 'bid_pair') return { action: 'bid_pair', suit: opt.suit };
-        if (opt.kind === 'bid_sj') return { action: 'bid_sj', suit: opt.suit };
-        if (opt.kind === 'bid_bj') return { action: 'bid_bj', suit: opt.suit };
         if (opt.kind === 'bid_nt') return { action: 'bid_nt' };
         return null;
       }
@@ -1334,8 +1330,6 @@
         const sn = suitNames[opt.suit] || opt.suit || '';
         if (opt.kind === 'bid_plain' || opt.kind === 'bid_suit') return `${sn} 亮级`;
         if (opt.kind === 'bid_pair') return `${sn} 对级`;
-        if (opt.kind === 'bid_sj') return `${sn} +小王`;
-        if (opt.kind === 'bid_bj') return `${sn} +大王`;
         return '';
       }
       ld.forEach((opt) => {
