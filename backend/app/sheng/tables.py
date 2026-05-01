@@ -116,6 +116,15 @@ def find_seat_for_token(room: ShengRoom, token: str) -> int:
     raise PermissionError("bad token")
 
 
+def _evict_oldest_room_if_full() -> None:
+    """When at capacity, remove one oldest table instead of wiping all games."""
+
+    while len(_TABLES) >= _MAX_TABLES:
+        oldest_id = next(iter(_TABLES))
+        del _TABLES[oldest_id]
+        _LOCKS.pop(oldest_id, None)
+
+
 async def create_room(
     *,
     num_players: int = 4,
@@ -124,8 +133,7 @@ async def create_room(
     match_level_rank: int = 2,
     friend_calls: tuple[FriendCall, ...] = (),
 ) -> tuple[ShengRoom, dict[int, str]]:
-    if len(_TABLES) >= _MAX_TABLES:
-        _TABLES.clear()  # naive reset
+    _evict_oldest_room_if_full()
     if num_players not in (4, 6):
         raise ValueError("num_players must be 4 or 6")
     validate_friend_calls(num_players, friend_calls)

@@ -1,5 +1,7 @@
 """叫主 MVP: pass chain ends deal; suit / 无主 bids require material in hand (visible during deal)."""
 
+import pytest
+
 from app.sheng.cards import Suit
 from app.sheng.hand import RunningHand
 from app.sheng.trump import TrumpContext
@@ -14,7 +16,35 @@ def _bury_min_ids(rh: RunningHand) -> None:
 
 def _declare_passes_to_kitty(rh: RunningHand) -> None:
     while rh.phase == "declare":
-        rh.declare_submit(rh.declare_to_act_seat, {"action": "pass"})
+        moved = False
+        for s in range(rh.num_players):
+            if rh.legal_declare_options(s):
+                rh.declare_submit(s, {"action": "pass"})
+                moved = True
+                break
+        assert moved
+
+
+def test_cannot_overbid_own_call_when_turn_returns() -> None:
+    """亮满后按序叫主时，最高叫品者轮转回来只能「过」，不能再抬自己的主。"""
+
+    for seed in range(300):
+        rh = RunningHand.deal_new(num_players=4, seed=seed, declarer_seat=0, match_level_rank=7)
+        rh.reveal_full_deal()
+        a = rh.declare_to_act_seat
+        opts = [o for o in rh.legal_declare_options(a) if o.get("kind") == "bid_plain"]
+        if not opts:
+            continue
+        suit = opts[0]["suit"]
+        rh.declare_submit(a, {"action": "bid_plain", "suit": suit})
+        for _ in range(3):
+            rh.declare_submit(rh.declare_to_act_seat, {"action": "pass"})
+        assert rh.declare_to_act_seat == a
+        assert rh.legal_declare_options(a) == [{"kind": "pass"}]
+        with pytest.raises(PermissionError):
+            rh.declare_submit(a, {"action": "bid_plain", "suit": suit})
+        return
+    pytest.fail("no seed produced bid_plain from first actor in 300 tries")
 
 
 def _declare_then_bury_auto(rh: RunningHand) -> None:

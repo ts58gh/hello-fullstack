@@ -302,6 +302,34 @@
     }
   }
 
+  /** FastAPI 404 with detail "table not found" when in-memory table is gone. */
+  function detailLooksLikeTableMissing(body) {
+    const d = body && (body.detail ?? body.message);
+    return typeof d === 'string' && /table not found/i.test(d);
+  }
+
+  function abandonTableSessionBecauseMissing(contextLabel) {
+    cancelDealAdvanceChain();
+    leaveTable();
+    statusLine.textContent =
+      (contextLabel ? contextLabel + ' — ' : '') +
+      '服务器上没有这桌了（常见：主机重启、桌位满时淘汰最早一桌、或 API 地址与开桌时不一致）。本地进度已清除，请重新「开桌」。';
+  }
+
+  async function fetchStateRest() {
+    if (!app.tableId || !tokenForSeat(app.seat)) return;
+    const tok = encodeURIComponent(tokenForSeat(app.seat));
+    const r = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}?token=${tok}`);
+    const st = await r.json().catch(() => null);
+    if (!r.ok) {
+      if (r.status === 404 && (!st || detailLooksLikeTableMissing(st))) {
+        abandonTableSessionBecauseMissing('同步失败');
+      }
+      return;
+    }
+    if (st) renderState(st);
+  }
+
   async function advanceDealViaRestOnce(steps) {
     if (!app.tableId || !tokenForSeat(app.seat)) return false;
     const r = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/deal_advance`, {
@@ -313,6 +341,9 @@
     if (r.ok && jd && jd.state) {
       renderState(jd.state);
       return true;
+    }
+    if (!r.ok && r.status === 404 && (!jd || detailLooksLikeTableMissing(jd))) {
+      abandonTableSessionBecauseMissing('发牌同步');
     }
     return false;
   }
@@ -338,6 +369,21 @@
         void advanceDealViaRestOnce(1);
       }
     }, DEAL_STAGGER_MS);
+  }
+
+  /** Auto-seat: mix pass / first random legal bid (higher chance when stakes already on table). */
+  function botDeclarePayloadFromLegal(ld, declareStakes) {
+    const opts = (ld || []).filter((o) => o && o.kind && o.kind !== 'pass');
+    if (!opts.length) return { action: 'pass' };
+    const stkAmt = Number(declareStakes);
+    const pBid = stkAmt > 0 ? 0.52 : 0.38;
+    if (Math.random() >= pBid) return { action: 'pass' };
+    const pick = opts[Math.floor(Math.random() * opts.length)];
+    if (pick.kind === 'bid_plain' || pick.kind === 'bid_suit')
+      return { action: 'bid_plain', suit: pick.suit };
+    if (pick.kind === 'bid_pair') return { action: 'bid_pair', suit: pick.suit };
+    if (pick.kind === 'bid_nt') return { action: 'bid_nt' };
+    return { action: 'pass' };
   }
 
   function formatDeclareHistLine(h) {
@@ -367,17 +413,74 @@
     const st = app.lastState;
     if (!st) return;
     if (st.phase === 'declare') {
+      const free = !!st.declare_turn_free_for_all;
       const ds = st.declare_to_act_seat;
-      if (ds === undefined || ds === null) return;
-      if (Number(ds) === Number(st.viewer_seat)) return;
+      if (!free && (ds === undefined || ds === null)) return;
+      if (!free && Number(ds) === Number(st.viewer_seat)) return;
       botBusy = true;
       try {
-        await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/declare`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ token: tokenForSeat(ds), action: 'pass' }),
-        });
-        await fetchStateRest();
+        if (free) {
+          const np = st.num_players || app.np || 4;
+          for (let si = 0; si < np; si++) {
+            if (Number(si) === Number(st.viewer_seat)) continue;
+            const tsi = tokenForSeat(si);
+            if (!tsi) continue;
+            const tokq = encodeURIComponent(tsi);
+            const rPeek = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}?token=${tokq}`);
+            const jPeek = await rPeek.json().catch(() => null);
+            if (
+              !rPeek.ok &&
+              rPeek.status === 404 &&
+              (!jPeek || detailLooksLikeTableMissing(jPeek))
+            ) {
+              abandonTableSessionBecauseMissing('叫主失败');
+              return;
+            }
+            const ldPeer = jPeek && jPeek.legal_declare;
+            if (!ldPeer || !ldPeer.length) continue;
+            const pay = botDeclarePayloadFromLegal(ldPeer, jPeek.declare_stakes);
+            const rd = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/declare`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+              body: JSON.stringify({ token: tsi, ...pay }),
+            });
+            const jdd = await rd.json().catch(() => null);
+            if (!rd.ok && rd.status === 404 && (!jdd || detailLooksLikeTableMissing(jdd))) {
+              abandonTableSessionBecauseMissing('叫主失败');
+              return;
+            }
+            await fetchStateRest();
+            break;
+          }
+        } else {
+          const tOrd = tokenForSeat(ds);
+          if (!tOrd) return;
+          const tokOrd = encodeURIComponent(tOrd);
+          const rPeekO = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}?token=${tokOrd}`);
+          const jPeekO = await rPeekO.json().catch(() => null);
+          if (
+            !rPeekO.ok &&
+            rPeekO.status === 404 &&
+            (!jPeekO || detailLooksLikeTableMissing(jPeekO))
+          ) {
+            abandonTableSessionBecauseMissing('叫主失败');
+            return;
+          }
+          const ldOrd = (jPeekO && jPeekO.legal_declare) || [];
+          if (!ldOrd.length) return;
+          const payO = botDeclarePayloadFromLegal(ldOrd, jPeekO && jPeekO.declare_stakes);
+          const rd = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}/declare`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ token: tOrd, ...payO }),
+          });
+          const jdd = await rd.json().catch(() => null);
+          if (!rd.ok && rd.status === 404 && (!jdd || detailLooksLikeTableMissing(jdd))) {
+            abandonTableSessionBecauseMissing('叫主失败');
+            return;
+          }
+          await fetchStateRest();
+        }
       } catch (_) {
         /* ignore */
       } finally {
@@ -395,8 +498,14 @@
       try {
         const tt = encodeURIComponent(tokenForSeat(bt));
         const r = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}?token=${tt}`);
-        if (!r.ok) return;
-        const peer = await r.json();
+        const peerErr = await r.json().catch(() => null);
+        if (!r.ok) {
+          if (r.status === 404 && (!peerErr || detailLooksLikeTableMissing(peerErr))) {
+            abandonTableSessionBecauseMissing('埋底失败');
+          }
+          return;
+        }
+        const peer = peerErr;
         const hand = peer.hands && peer.hands[bt];
         if (!Array.isArray(hand)) return;
         const ids = hand
@@ -410,6 +519,11 @@
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify({ token: tokenForSeat(bt), card_ids: ids }),
         });
+        const jb = await r2.json().catch(() => null);
+        if (!r2.ok && r2.status === 404 && (!jb || detailLooksLikeTableMissing(jb))) {
+          abandonTableSessionBecauseMissing('埋底失败');
+          return;
+        }
         if (r2.ok) await fetchStateRest();
       } catch (_) {
         /* ignore */
@@ -427,8 +541,14 @@
     try {
       const tt = encodeURIComponent(tokenForSeat(actor));
       const r = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}?token=${tt}`);
-      if (!r.ok) return;
-      const peer = await r.json();
+      const peerErrOrState = await r.json().catch(() => null);
+      if (!r.ok) {
+        if (r.status === 404 && (!peerErrOrState || detailLooksLikeTableMissing(peerErrOrState))) {
+          abandonTableSessionBecauseMissing('出牌失败');
+        }
+        return;
+      }
+      const peer = peerErrOrState;
       const legal = peer.legal_plays || [];
       if (!legal.length) return;
       const ids = legalOptionCardIds(legal[0]);
@@ -439,6 +559,10 @@
         body: JSON.stringify({ token: tokenForSeat(actor), card_ids: ids }),
       });
       const body = await r2.json().catch(() => null);
+      if (!r2.ok && r2.status === 404 && (!body || detailLooksLikeTableMissing(body))) {
+        abandonTableSessionBecauseMissing('出牌失败');
+        return;
+      }
       if (r2.ok && body) {
         /* Do not render(body.state): it is viewer=actor snapshot and desyncs our active seat WS view. */
         await fetchStateRest();
@@ -507,19 +631,15 @@
       }
       if (msg.type === 'error') {
         selectedPlayIds = [];
-        statusLine.textContent = '错误: ' + (msg.message || '');
-        void fetchStateRest();
+        const em = msg.message || '';
+        if (/table not found/i.test(em)) {
+          abandonTableSessionBecauseMissing('连接错误');
+        } else {
+          statusLine.textContent = '错误: ' + em;
+          void fetchStateRest();
+        }
       }
     });
-  }
-
-  async function fetchStateRest() {
-    if (!app.tableId || !tokenForSeat(app.seat)) return;
-    const tok = encodeURIComponent(tokenForSeat(app.seat));
-    const r = await fetch(`${API_BASE}/api/sheng/tables/${app.tableId}?token=${tok}`);
-    if (!r.ok) return;
-    const st = await r.json();
-    renderState(st);
   }
 
   const SUIT_GLYPH = { C: '\u2663', D: '\u2666', H: '\u2665', S: '\u2660' };
@@ -922,7 +1042,12 @@
     if (!board) return;
     let act = NaN;
     if (st.phase === 'play' && st.to_act_seat != null) act = Number(st.to_act_seat);
-    else if (st.phase === 'declare' && st.declare_to_act_seat != null) act = Number(st.declare_to_act_seat);
+    else if (
+      st.phase === 'declare' &&
+      !st.declare_turn_free_for_all &&
+      st.declare_to_act_seat != null
+    )
+      act = Number(st.declare_to_act_seat);
     else if (st.phase === 'kitty' && st.bury_to_act_seat != null) act = Number(st.bury_to_act_seat);
     board.querySelectorAll('.sb-seat').forEach((n) => {
       const s = Number(n.dataset.seat);
@@ -1299,7 +1424,7 @@
     if (st.phase === 'declare') {
       const ld = legalDeclare || [];
       title.textContent =
-        '叫主 · 发牌过程中可随时叫 · 仅能用手上已发出的牌 · 无主须大王+小王';
+        '叫主 · 发牌中不按序叫/过 · 亮满后从领先者下家按序反主 · 无主须大王+小王';
       btnPlay.onclick = null;
       btnPlay.disabled = true;
       btnPlay.style.display = 'none';
@@ -1307,7 +1432,9 @@
         ? ld.length > 1
           ? '点下方「过」或叫品；不须点手牌出牌'
           : '仅可「过」'
-        : `等待其他家 · 轮到 座${st.declare_to_act_seat} 叫主`;
+        : st.declare_turn_free_for_all
+          ? '等待其他家过/叫（当前不发牌轮转）'
+          : `等待他家 · 应门 座${st.declare_to_act_seat ?? '—'} `;
 
       const passBtn = document.createElement('button');
       passBtn.type = 'button';
@@ -1452,11 +1579,15 @@
     const myTurn =
       st.phase === 'play' && Number.isFinite(viewerNum) && Number.isFinite(actNum) && viewerNum === actNum;
 
-    const dAct = st.declare_to_act_seat != null ? Number(st.declare_to_act_seat) : NaN;
+    const ld = st.legal_declare || [];
     const declareTurn =
-      st.phase === 'declare' && Number.isFinite(viewerNum) && Number.isFinite(dAct) && viewerNum === dAct;
+      st.phase === 'declare' &&
+      ld.length > 0 &&
+      Number.isFinite(viewerNum) &&
+      (st.declare_turn_free_for_all ||
+        (st.declare_to_act_seat != null && Number(st.declare_to_act_seat) === viewerNum));
 
-    renderMyHand(st, myTurn, legal, declareTurn, st.legal_declare || []);
+    renderMyHand(st, myTurn, legal, declareTurn, ld);
 
     if (st.phase === 'scored') {
       btnNext.classList.remove('hidden');
@@ -1478,8 +1609,10 @@
 
     statusLine.textContent =
       st.phase === 'declare'
-        ? `叫主 · 轮到 座${st.declare_to_act_seat} · 你在 座${viewerNum}` +
-          (declareTurn ? ' — 发牌进程中也可叫 · 仅能用手上已发到牌 · 见下方叫牌记录' : '')
+        ? (st.declare_turn_free_for_all
+            ? `叫主 · 发牌不按序 · 你可操作则见下方按钮 · 你在 座${viewerNum}`
+            : `叫主 · 应门 座${st.declare_to_act_seat ?? '—'} · 你在 座${viewerNum}`) +
+          (declareTurn ? ' — 仅能用手上已发到牌 · 见下方记录' : '')
         : st.phase === 'kitty'
           ? `埋底 · 庄 座${st.bury_to_act_seat ?? '—'} 扣 ${st.kitty?.bury_needed ?? '—'} 张 · 你在 座${viewerNum}` +
             (Number(st.bury_to_act_seat) === viewerNum ? ' — 点选恰好张数后点「埋底」' : ' — 等待庄家埋底')
@@ -1545,6 +1678,10 @@
     const jd = await r.json().catch(() => null);
     if (r.ok && jd && jd.state) renderState(jd.state);
     else {
+      if (!r.ok && r.status === 404 && (!jd || detailLooksLikeTableMissing(jd))) {
+        abandonTableSessionBecauseMissing('叫主失败');
+        return;
+      }
       const det = jd && (jd.detail || jd.message);
       statusLine.textContent = `叫主失败: ${det ? JSON.stringify(det) : r.status}`;
     }
@@ -1553,9 +1690,15 @@
   function submitDeclare(extra) {
     const st = app.lastState;
     const v = Number(st?.viewer_seat);
-    const d =
-      st && st.declare_to_act_seat != null && st.phase === 'declare' ? Number(st.declare_to_act_seat) : NaN;
-    if (!st || st.phase !== 'declare' || !Number.isFinite(v) || !Number.isFinite(d) || v !== d) {
+    const free = !!(st && st.declare_turn_free_for_all);
+    const ld = (st && st.legal_declare) || [];
+    const turnOk =
+      st &&
+      st.phase === 'declare' &&
+      Number.isFinite(v) &&
+      ld.length > 0 &&
+      (free || (st.declare_to_act_seat != null && Number(st.declare_to_act_seat) === v));
+    if (!turnOk) {
       statusLine.textContent = '叫主已过时…';
       void fetchStateRest();
       return;
@@ -1580,6 +1723,10 @@
     const jd = await r.json().catch(() => null);
     if (r.ok && jd && jd.state) renderState(jd.state);
     else {
+      if (!r.ok && r.status === 404 && (!jd || detailLooksLikeTableMissing(jd))) {
+        abandonTableSessionBecauseMissing('埋底失败');
+        return;
+      }
       const det = jd && (jd.detail || jd.message);
       statusLine.textContent = `埋底失败: ${det ? JSON.stringify(det) : r.status}`;
     }
@@ -1613,6 +1760,9 @@
     });
     const body = await r.json().catch(() => null);
     if (r.ok && body && body.state) renderState(body.state);
+    else if (!r.ok && r.status === 404 && (!body || detailLooksLikeTableMissing(body))) {
+      abandonTableSessionBecauseMissing('出牌失败');
+    }
   }
 
   async function createTable(numPlayers) {
@@ -1681,6 +1831,10 @@
     if (r.ok && data && data.state) {
       renderState(data.state);
     } else {
+      if (!r.ok && r.status === 404 && (!data || detailLooksLikeTableMissing(data))) {
+        abandonTableSessionBecauseMissing('下一副');
+        return;
+      }
       statusLine.textContent =
         'next_hand 失败: ' +
         (data && data.detail ? JSON.stringify(data.detail) : r.statusText);

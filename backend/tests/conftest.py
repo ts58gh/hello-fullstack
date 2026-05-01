@@ -59,12 +59,22 @@ def sheng_rest_autoplay_until_scored(client: TestClient, table_id: str, tokens: 
         if st_pub["phase"] == "scored":
             return
         if st_pub["phase"] == "declare":
-            dseat = str(int(st_pub["declare_to_act_seat"]))  # type: ignore[arg-type]
-            resp = client.post(
-                f"/api/sheng/tables/{table_id}/declare",
-                json={"token": tokens[dseat], "action": "pass"},
-            )
-            assert resp.status_code == 200, resp.text
+            n = int(st_pub["num_players"])
+            posted = False
+            for si in range(n):
+                tok = tokens[str(si)]
+                st_i = client.get(f"/api/sheng/tables/{table_id}", params={"token": tok}).json()
+                ld = st_i.get("legal_declare") or []
+                if not ld:
+                    continue
+                resp = client.post(
+                    f"/api/sheng/tables/{table_id}/declare",
+                    json={"token": tok, "action": "pass"},
+                )
+                assert resp.status_code == 200, resp.text
+                posted = True
+                break
+            assert posted, "no seat had a legal declare action"
             safety += 1
             continue
         if st_pub["phase"] == "kitty":

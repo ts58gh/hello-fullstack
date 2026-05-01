@@ -40,11 +40,33 @@ def test_two_rest_hands_via_next_hand() -> None:
     safety_d = 0
     while st["phase"] == "declare" and safety_d < 60:
         sheng_rest_finish_progressive_deal(client, table_id, tokens["0"])
-        dseat = int(st["declare_to_act_seat"])  # type: ignore[arg-type]
-        client.post(
-            "/api/sheng/tables/" + table_id + "/declare",
-            json={"token": tokens[str(dseat)], "action": "pass"},
-        ).raise_for_status()
+        st = client.get("/api/sheng/tables/" + table_id, params={"token": tokens["0"]}).json()
+        if st["phase"] != "declare":
+            break
+        posted = False
+        n = int(st["num_players"])
+        if st.get("declare_turn_free_for_all"):
+            for si in range(n):
+                tok = tokens[str(si)]
+                st_i = client.get(
+                    "/api/sheng/tables/" + table_id, params={"token": tok}
+                ).json()
+                if not st_i.get("legal_declare"):
+                    continue
+                client.post(
+                    "/api/sheng/tables/" + table_id + "/declare",
+                    json={"token": tok, "action": "pass"},
+                ).raise_for_status()
+                posted = True
+                break
+            assert posted, "no seat could pass during progressive declare"
+        else:
+            assert st.get("declare_to_act_seat") is not None
+            dseat = int(st["declare_to_act_seat"])  # type: ignore[arg-type]
+            client.post(
+                "/api/sheng/tables/" + table_id + "/declare",
+                json={"token": tokens[str(dseat)], "action": "pass"},
+            ).raise_for_status()
         st = client.get("/api/sheng/tables/" + table_id, params={"token": tokens["0"]}).json()
         safety_d += 1
     if st["phase"] == "kitty":

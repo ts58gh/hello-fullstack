@@ -133,8 +133,15 @@ def view_for(room: ShengRoom, viewer: int) -> dict[str, Any]:
         "bank_declarer_seat": room.bank_declarer_seat,
         "opening_bank_seat": rh.opening_bank_seat,
         "declare_stakes": rh.declare_stakes,
-        "declare_to_act_seat": rh.declare_to_act_seat if rh.phase == "declare" else None,
-        "declare_passes_since_change": rh.declare_passes_since_change if rh.phase == "declare" else None,
+        "declare_to_act_seat": (
+            None
+            if rh.phase == "declare" and rh.deal_reveal_steps < len(rh._deal_flat)
+            else rh.declare_to_act_seat
+            if rh.phase == "declare"
+            else None
+        ),
+        "declare_turn_free_for_all": rh.phase == "declare" and rh.deal_reveal_steps < len(rh._deal_flat),
+        "declare_passes_since_change": len(rh.declare_round_passed) if rh.phase == "declare" else None,
         "declare_best_key": list(rh.declare_best_key) if rh.phase == "declare" else None,
         "legal_declare": legal_declare,
         "declare_history": list(rh.declare_history),

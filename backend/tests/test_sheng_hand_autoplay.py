@@ -10,7 +10,13 @@ def test_running_hand_autoplay_four_players_to_scored() -> None:
     max_plays = 400
     while rh.phase != "scored":
         if rh.phase == "declare":
-            rh.declare_submit(rh.declare_to_act_seat, {"action": "pass"})
+            moved = False
+            for s in range(rh.num_players):
+                if rh.legal_declare_options(s):
+                    rh.declare_submit(s, {"action": "pass"})
+                    moved = True
+                    break
+            assert moved
             safety += 1
             assert safety < max_plays
             continue

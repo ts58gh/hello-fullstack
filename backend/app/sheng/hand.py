@@ -5,6 +5,10 @@ First trick opens with **庄家领出**. After 叫主, the successful bidder bec
 
 ``leader=(bank+1)%n`` (**庄家下手**).
 
+**叫主节奏:**  Progressive deal 未完时，各家叫/过不按座位轮转；全员按轮反应满后再继续。
+牌亮满后转入**按座位顺序**，从当前叫品持有者的下家开始**反主**。
+当前最高叫品者不能在无人压过的情况下**再加叫抬自己的主**（只能等轮转回来「过」以收尾）。
+
 
 Six-player **找朋友**：可声明两张朋友牌（揭牌由 :mod:`friend` 跟踪）。
 若本副 **两张朋友牌均已揭牌** 且与庄家共 **三** 个不同座位，则 **捡分 / 底牌奖** 按 **3v3**（庄方 vs 三门）计算；否则 **回退为对角两队**。
@@ -110,7 +114,7 @@ class RunningHand:
     _completed_tricks: list[CompletedTrickRecord] = field(default_factory=list, repr=False)
     _revealed_friend_seats: set[int] = field(default_factory=set, repr=False)
     declare_to_act_seat: int = 0
-    declare_passes_since_change: int = 0
+    declare_round_passed: set[int] = field(default_factory=set)
     declare_best_key: tuple[int, ...] = (-1,)
     opening_bank_seat: int = 0
     declare_winner_seat: int | None = None
@@ -165,7 +169,7 @@ class RunningHand:
             friend_tracker=tracker,
             friend_calls=fc_tuple,
             declare_to_act_seat=declare_open,
-            declare_passes_since_change=0,
+            declare_round_passed=set(),
             declare_best_key=(-1,),
             opening_bank_seat=base,
             declare_winner_seat=None,
@@ -193,7 +197,26 @@ class RunningHand:
     def reveal_full_deal(self) -> None:
         """Expose every dealt player card (testing or instant-reveal clients)."""
 
-        self.deal_reveal_steps = len(self._deal_flat)
+        mx = len(self._deal_flat)
+        prev = self.deal_reveal_steps
+        self.deal_reveal_steps = mx
+        if self.phase == "declare" and prev < mx:
+            self._enter_ordered_declare_after_full_deal()
+
+    def _deal_fully_visible(self) -> bool:
+        return self.deal_reveal_steps >= len(self._deal_flat)
+
+    def _enter_ordered_declare_after_full_deal(self) -> None:
+        """牌亮满后改为按座位顺序；从当前叫主（最高叫品持有者）的下家起反主."""
+
+        self.declare_round_passed.clear()
+        n = self.num_players
+        bank = self.opening_bank_seat % n
+        ws = self.declare_winner_seat
+        if ws is None:
+            self.declare_to_act_seat = (bank + 1) % n
+        else:
+            self.declare_to_act_seat = (int(ws) + 1) % n
 
     def advance_deal_step(self, steps: int = 1) -> list[dict[str, Any]]:
         if self.phase != "declare":
@@ -201,6 +224,8 @@ class RunningHand:
         mx = len(self._deal_flat)
         prev = self.deal_reveal_steps
         self.deal_reveal_steps = max(0, min(mx, prev + max(0, int(steps))))
+        if prev < mx and self.deal_reveal_steps >= mx:
+            self._enter_ordered_declare_after_full_deal()
         return [
             {
                 "type": "deal_advanced",
@@ -292,7 +317,7 @@ class RunningHand:
         delta = self._add_stakes(line)
         self.declare_best_key = new_key
         self.declare_winner_seat = seat
-        self.declare_passes_since_change = 0
+        self.declare_round_passed.clear()
         events.append(
             {
                 "type": "declare_bid",
@@ -305,8 +330,18 @@ class RunningHand:
         )
 
     def legal_declare_options(self, seat: int) -> list[dict[str, Any]]:
-        if self.phase != "declare" or seat != self.declare_to_act_seat:
+        if self.phase != "declare":
             return []
+        ordered = self._deal_fully_visible()
+        if seat in self.declare_round_passed:
+            return []
+        if not ordered:
+            if self.declare_winner_seat == seat:
+                return []
+        elif seat != self.declare_to_act_seat:
+            return []
+        if ordered and self.declare_winner_seat == seat:
+            return [{"kind": "pass"}]
         mat = self._pile_for_declare_checks(seat)
         out: list[dict[str, Any]] = [{"kind": "pass"}]
         bk = self.declare_best_key
@@ -366,8 +401,8 @@ class RunningHand:
     def declare_submit(self, seat: int, payload: dict[str, Any]) -> dict[str, Any]:
         if self.phase != "declare":
             raise ValueError("not in declare phase")
-        if seat != self.declare_to_act_seat:
-            raise PermissionError("not your turn to declare")
+
+        ordered = self._deal_fully_visible()
 
         raw = payload.get("action") or payload.get("kind") or ""
         action = str(raw).lower().replace("-", "_")
@@ -375,8 +410,24 @@ class RunningHand:
 
         mat = self._pile_for_declare_checks(seat)
 
+        is_bid = action not in ("pass", "")
+        if is_bid and self.declare_winner_seat is not None and seat == self.declare_winner_seat:
+            raise PermissionError("不能在自己的叫品上再加叫（须等他家反或无反后再收尾）")
+
+        if ordered:
+            if seat != self.declare_to_act_seat:
+                raise PermissionError("not your turn to declare")
+
+        if is_bid and seat in self.declare_round_passed:
+            raise PermissionError("本圈已出过牌或过牌")
+
         if action in ("pass",):
-            self.declare_passes_since_change += 1
+            if seat in self.declare_round_passed:
+                raise PermissionError("本圈已出过牌或过牌")
+            if not ordered:
+                if self.declare_winner_seat == seat:
+                    raise PermissionError("你已叫主，须等待各家反牌或过牌")
+            self.declare_round_passed.add(seat)
             events.append({"type": "declare_pass", "seat": seat})
             self.declare_history.append({"kind": "pass", "seat": seat})
         elif action in ("bid_suit", "bid_plain"):
@@ -416,10 +467,10 @@ class RunningHand:
         else:
             raise ValueError("unknown declare action")
 
-        if self.declare_passes_since_change >= self.num_players:
+        if len(self.declare_round_passed) >= self.num_players:
             self._finish_declare_phase(events)
-        elif self.phase == "declare":
-            self.declare_to_act_seat = (self.declare_to_act_seat + 1) % self.num_players
+        elif self.phase == "declare" and ordered:
+            self.declare_to_act_seat = (seat + 1) % self.num_players
 
         return {"events": events}
 
