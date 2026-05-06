@@ -10,4 +10,4 @@ services:
       # Restrict CORS to the GitHub Pages origin that hosts the frontend.
       # Use a comma-separated list to allow multiple origins if needed.
       - key: CORS_ALLOW_ORIGINS
-        value: "https://ts58gh.github.io"
+        value: "https://stqcn.github.io"

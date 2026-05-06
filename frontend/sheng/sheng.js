@@ -98,7 +98,7 @@
   const boardResizeHandle = $('boardResizeHandle');
   const boardResizeHandleX = $('boardResizeHandleX');
   const boardScaleWrap = $('boardScaleWrap');
-  const boardDeclareMount = $('boardDeclareMount');
+  const board = $('board');
   const metaBar = $('metaBar');
   const dealOverlay = $('dealOverlay');
   const myHandDock = $('myHandDock');
@@ -114,7 +114,10 @@
   const friendSixSection = $('friendSixSection');
 
   let botBusy = false;
-  const DEAL_STAGGER_MS = 88;
+  /** Progressive deal during 叫主: interval between automatic `deal_advance` ticks. */
+  const DEAL_ADVANCE_MS = 298;
+  /** Play phase: stagger when fanning the first full hand onto the dock. */
+  const PLAY_HAND_DEAL_STAGGER_MS = 168;
   let dealTimers = [];
   let dealAdvanceChainTid = null;
   let dealingInProgress = false;
@@ -239,10 +242,6 @@
     eventLog.textContent = '(无)';
     wsPill.textContent = 'WS: —';
     $('friendSixSection')?.classList.add('hidden');
-    if (boardDeclareMount) {
-      boardDeclareMount.innerHTML = '';
-      boardDeclareMount.classList.add('hidden');
-    }
   }
 
   /** @returns {{ nth: number, suit: string, rank: number } | null} */
@@ -372,7 +371,7 @@
       } else {
         void advanceDealViaRestOnce(1);
       }
-    }, DEAL_STAGGER_MS);
+    }, DEAL_ADVANCE_MS);
   }
 
   /** Auto-seat: mix pass / first random legal bid (higher chance when stakes already on table). */
@@ -736,7 +735,11 @@
   }
 
   function seatOffsetViewer(physicalSeat, viewerSeat, np) {
-    return ((physicalSeat - viewerSeat + np) % np + np) % np;
+    const p = Number(physicalSeat);
+    const v = Number(viewerSeat);
+    const n = Number(np);
+    if (!Number.isFinite(p) || !Number.isFinite(v) || !Number.isFinite(n) || n <= 0) return 0;
+    return Math.floor((((p - v) % n) + n) % n);
   }
 
   function trickMatPct(offset, np) {
@@ -967,7 +970,7 @@
     const finger = hands
       .map((h, si) => (si === v ? 'x' : typeof h.count === 'number' ? String(h.count) : '?'))
       .join(',');
-    const key = `${np}|${v}|${finger}`;
+    const key = `${np}|${v}|${finger}|${st.phase === 'declare' ? declareShowcaseFingerprint(st) : ''}`;
     let pm = board.querySelector('.trick-playmat');
     if (boardLayoutKey === key && pm) {
       updateSeatActingHighlight(st);
@@ -1045,37 +1048,74 @@
   function resolveDeclareFaceUp(st) {
     if (!st) return null;
     const raw = st.declare_face_up ?? st.declareFaceUp;
-    if (!raw || raw.seat === undefined || raw.seat === null) return null;
+    if (!raw || typeof raw !== 'object') return null;
+    if (raw.seat === undefined || raw.seat === null) return null;
+    const seat = Number(raw.seat);
+    if (!Number.isFinite(seat)) return null;
     const cards = Array.isArray(raw.cards) ? raw.cards : [];
     if (!cards.length) return null;
-    return { seat: Number(raw.seat), cards };
+    return { seat, cards };
   }
 
-  /** 明示牌挂载在 felts **外** `#boardDeclareMount`，避免整块 board 清空或缩放视口裁剪掉。 */
-  function paintDeclareShowcaseMount(st) {
-    if (!boardDeclareMount) return;
-    boardDeclareMount.innerHTML = '';
-    boardDeclareMount.classList.add('hidden');
-    if (!st || st.phase !== 'declare') return;
-    const df = resolveDeclareFaceUp(st);
-    if (!df) return;
-    boardDeclareMount.classList.remove('hidden');
-    const strip = document.createElement('div');
-    strip.className = 'declare-showcase-strip';
-    const lbl = document.createElement('div');
-    lbl.className = 'declare-showcase-lbl';
-    lbl.textContent = `桌面上 · 座${df.seat} 叫牌明示（被反后收回手中）`;
-    const row = document.createElement('div');
-    row.className = 'declare-showcase-cards';
-    df.cards.forEach((card) => {
-      const cf = document.createElement('div');
-      cf.className = 'card-face card-face--declare-show';
-      applyCardFace(cf, card);
-      row.appendChild(cf);
-    });
-    strip.appendChild(lbl);
-    strip.appendChild(row);
-    boardDeclareMount.appendChild(strip);
+  /** declare_face_up 缺省时，用叫牌记录 + 本席可见手牌拼出示意图（仅当自己叫且牌仍在 JSON 里时有效）。 */
+  function resolveDeclareFaceUpFromHist(st) {
+    if (!st || String(st.phase) !== 'declare') return null;
+    const hist = st.declare_history;
+    if (!Array.isArray(hist) || !hist.length) return null;
+    let last = null;
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const h = hist[i];
+      if (h && h.kind === 'bid' && h.seat != null && Array.isArray(h.card_ids) && h.card_ids.length) {
+        last = h;
+        break;
+      }
+    }
+    if (!last) return null;
+    const seat = Number(last.seat);
+    if (!Number.isFinite(seat)) return null;
+    const want = last.card_ids.map((x) => cidKey(x)).filter((n) => n != null);
+    if (!want.length) return null;
+    const v = Number(st.viewer_seat);
+    const mine = Number.isFinite(v) ? (st.hands || [])[v] : [];
+    if (!Array.isArray(mine) || !mine.length) return null;
+    const picked = [];
+    for (const wid of want) {
+      const c = mine.find((x) => cidKey(x.cid) === wid);
+      if (!c) return null;
+      picked.push(c);
+    }
+    if (picked.length !== want.length) return null;
+    return { seat, cards: picked };
+  }
+
+  function declareShowcaseFingerprint(st) {
+    let df = resolveDeclareFaceUp(st);
+    if (!df && String(st.phase) === 'declare') df = resolveDeclareFaceUpFromHist(st);
+    if (!df || !df.cards || !df.cards.length) return '';
+    const ids = df.cards
+      .map((c) => cidKey(c.cid))
+      .filter((n) => n != null)
+      .join('.');
+    return `d${df.seat}:${ids}`;
+  }
+
+  /** 明示牌放在中央出牌区，与墩相同坐标；数据来自 declare_face_up（或回退到叫牌记录）。 */
+  function resolveDeclareShowcaseForMat(st) {
+    if (!st || String(st.phase) !== 'declare') return null;
+    let df = resolveDeclareFaceUp(st);
+    if (!df) df = resolveDeclareFaceUpFromHist(st);
+    return df;
+  }
+
+  function centerPlaysForBoard(st) {
+    const trick = Array.isArray(st.current_trick) ? st.current_trick.slice() : [];
+    const ph = String(st.phase || '');
+    if (ph !== 'declare') return trick;
+    const df = resolveDeclareShowcaseForMat(st);
+    if (!df || !df.cards || !df.cards.length) return trick;
+    const seat = Number(df.seat);
+    if (!Number.isFinite(seat)) return trick;
+    return [{ seat, cards: df.cards, declare_showcase: true }, ...trick];
   }
 
   function updateSeatActingHighlight(st) {
@@ -1102,36 +1142,45 @@
     if (!plays || !plays.length) return;
     const hi = highlights || {};
     const mini = playmatEl.classList.contains('trick-playmat--mini');
+    const vp = Number(viewerSeat);
+    const npN = Number(np);
+    const vOk = Number.isFinite(vp);
+    const nOk = Number.isFinite(npN) && npN > 0;
     plays.forEach((p) => {
-      const seat = p.seat;
-      const off = seatOffsetViewer(seat, viewerSeat, np);
+      const seat = Number(p && p.seat);
+      if (!Number.isFinite(seat)) return;
+      const off = vOk && nOk ? seatOffsetViewer(seat, vp, npN) : 0;
       const cards = p.cards && p.cards.length ? p.cards : p.card ? [p.card] : [];
+      const isDeclareFaceUp = !!p.declare_showcase;
       const wrap = document.createElement('div');
       const stack = document.createElement('div');
       stack.className = 'trick-cards-stack';
       cards.forEach((card) => {
         const cf = document.createElement('div');
-        cf.className = mini ? 'card-face card-face--sm' : 'card-face card-face--trick';
+        const cls = mini ? 'card-face card-face--sm' : 'card-face card-face--trick';
+        cf.className = isDeclareFaceUp ? cls + ' card-face--declare-on-mat' : cls;
         applyCardFace(cf, card);
         stack.appendChild(cf);
       });
       wrap.appendChild(stack);
       const lb = document.createElement('div');
-      lb.textContent = '座' + seat + (cards.length > 1 ? ` · ${cards.length}张` : '');
+      lb.textContent = isDeclareFaceUp
+        ? '座' + seat + ' · 叫牌明示'
+        : '座' + seat + (cards.length > 1 ? ` · ${cards.length}张` : '');
       if (mini) {
-        const pos = trickMatPct(off, np);
+        const pos = trickMatPct(off, npN);
         wrap.className = 'trick-mat-slot';
         wrap.style.left = pos.x + '%';
         wrap.style.top = pos.y + '%';
         lb.className = 'trick-mat-tag';
         if (hi.winnerSeat === seat) wrap.classList.add('trick-mat-slot--win');
-      } else if (np === 4) {
-        const dir = ['s', 'w', 'n', 'e'][off];
+      } else if (npN === 4) {
+        const dir = ['s', 'w', 'n', 'e'][Math.min(3, Math.max(0, off))];
         wrap.className = 'sb-trick-slot sb-tr-pos-' + dir;
         lb.className = 'sb-trick-tag';
         if (hi.winnerSeat === seat) wrap.classList.add('sb-trick-slot--win');
       } else {
-        const pos = trickMatPct(off, np);
+        const pos = trickMatPct(off, npN);
         wrap.className = 'trick-mat-slot';
         wrap.style.left = pos.x + '%';
         wrap.style.top = pos.y + '%';
@@ -1372,23 +1421,15 @@
       return;
     }
 
-    if (!mine.length && st.phase === 'declare') {
-      title.textContent = '叫主 · 发牌中…';
-      btnPlay.disabled = true;
-      btnPlay.style.display = 'none';
-      hintSpan.textContent = '待发牌 · 仅能用已发到手中的牌参与叫主（与服务器同步）';
-      row.textContent = '（尚未发到本手）';
-      return;
-    }
-
-    if (!mine.length) {
+    const declareWaitingForCards = !mine.length && st.phase === 'declare';
+    if (!mine.length && !declareWaitingForCards) {
       row.textContent = '（暂无手牌）';
       btnPlay.disabled = true;
       hintSpan.textContent = '';
       return;
     }
 
-    const sorted = sortHandForReveal(mine, st);
+    const sorted = mine.length ? sortHandForReveal(mine, st) : [];
 
     if (st.phase === 'kitty') {
       btnPlay.onclick = null;
@@ -1463,15 +1504,21 @@
 
     if (st.phase === 'declare') {
       const ld = legalDeclare || [];
-      title.textContent =
-        '叫主 · 发牌中不按序叫/过 · 亮满后从领先者下家按序反主 · 无主须大王+小王';
+      if (declareWaitingForCards) title.textContent = '叫主 · 发牌中…';
+      else
+        title.textContent =
+          '叫主 · 发牌中不按序叫/过 · 亮满后从领先者下家按序反主 · 无主须大王+小王';
       btnPlay.onclick = null;
       btnPlay.disabled = true;
       btnPlay.style.display = 'none';
       hintSpan.textContent = declareTurn
-        ? ld.length > 1
-          ? '点下方「过」或叫品；不须点手牌出牌'
-          : '仅可「过」'
+        ? declareWaitingForCards
+          ? ld.length > 1
+            ? '尚未发到本手 · 可先「过」或下方叫品（以服务器校验为准）'
+            : '尚未发到本手 · 可先「过」（以服务器校验为准）'
+          : ld.length > 1
+            ? '点下方「过」或叫品；不须点手牌出牌'
+            : '仅可「过」'
         : st.declare_turn_free_for_all
           ? '等待其他家过/叫（当前不发牌轮转）'
           : `等待他家 · 应门 座${st.declare_to_act_seat ?? '—'} `;
@@ -1513,13 +1560,17 @@
       });
 
       row.innerHTML = '';
-      sorted.forEach((c) => {
-        const el = document.createElement('div');
-        el.className = 'card-face dim';
-        applyCardFace(el, c);
-        el.title = (c.label || '') + ' · cid=' + c.cid;
-        row.appendChild(el);
-      });
+      if (declareWaitingForCards) {
+        row.textContent = '（尚未发到本手）';
+      } else {
+        sorted.forEach((c) => {
+          const el = document.createElement('div');
+          el.className = 'card-face dim';
+          applyCardFace(el, c);
+          el.title = (c.label || '') + ' · cid=' + c.cid;
+          row.appendChild(el);
+        });
+      }
       return;
     }
 
@@ -1573,7 +1624,7 @@
         const tid = setTimeout(() => {
           el.style.opacity = '1';
           el.classList.remove('card-deal-pending');
-        }, i * DEAL_STAGGER_MS);
+        }, i * PLAY_HAND_DEAL_STAGGER_MS);
         dealTimers.push(tid);
       });
       const fin = setTimeout(() => {
@@ -1581,7 +1632,7 @@
         dealAnimConsumedKey = epochKey;
         dealOverlay?.classList.add('hidden');
         updatePlayChrome();
-      }, sorted.length * DEAL_STAGGER_MS + 120);
+      }, sorted.length * PLAY_HAND_DEAL_STAGGER_MS + 120);
       dealTimers.push(fin);
     } else {
       sorted.forEach((c) => {
@@ -1606,11 +1657,10 @@
     gameShell?.classList.toggle('game-shell--6', np === 6);
 
     const playmat = ensureBoardLayout(st);
-    paintDeclareShowcaseMount(st);
     fillMetaBar(st);
     fillScoreBoard(st);
     syncHistorySelect(st);
-    paintTrickPlays(playmat, st.current_trick || [], st.viewer_seat, np, {});
+    paintTrickPlays(playmat, centerPlaysForBoard(st), st.viewer_seat, np, {});
     scheduleBoardFit();
     updateSeatActingHighlight(st);
 
